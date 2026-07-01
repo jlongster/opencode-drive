@@ -11,8 +11,8 @@
     "postinstall": "bun run sync:links",
     "typecheck": "tsgo --noEmit",
     "check": "bun run lint && bun run typecheck",
-    "sync:links": "rm -rf node_modules/effect && ln -s ../latest/node_modules/.bun/effect@4.0.0-beta.83/node_modules/effect node_modules/effect",
-    "update:opencode": "git -C latest pull --ff-only && bun --cwd latest install"
+    "sync:links": "rm -rf node_modules/effect && ln -s ../opencode-latest/node_modules/.bun/effect@4.0.0-beta.83/node_modules/effect node_modules/effect",
+    "update:opencode": "git -C opencode-latest pull --ff-only && bun --cwd opencode-latest install"
   },
   "dependencies": {
     "effect": "4.0.0-beta.83"

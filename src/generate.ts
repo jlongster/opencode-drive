@@ -1,9 +1,9 @@
 import { DateTime, Effect } from "effect"
-import { Model } from "../latest/packages/schema/src/model.ts"
-import { Project } from "../latest/packages/schema/src/project.ts"
-import { Provider } from "../latest/packages/schema/src/provider.ts"
-import { AbsolutePath } from "../latest/packages/schema/src/schema.ts"
-import { Session } from "../latest/packages/schema/src/session.ts"
+import { Model } from "../opencode-latest/packages/schema/src/model.ts"
+import { Project } from "../opencode-latest/packages/schema/src/project.ts"
+import { Provider } from "../opencode-latest/packages/schema/src/provider.ts"
+import { AbsolutePath } from "../opencode-latest/packages/schema/src/schema.ts"
+import { Session } from "../opencode-latest/packages/schema/src/session.ts"
 
 export interface ProbeData {
   readonly sessions: ReadonlyArray<typeof Session.Info.Type>
