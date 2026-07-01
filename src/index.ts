@@ -1,8 +1,11 @@
 import { Effect } from "effect"
-import { generateProbeData } from "./generate.js"
+import { generateConfigs } from "./generate.js"
 
-const program = generateProbeData.pipe(
-  Effect.tap((data) => Effect.sync(() => console.log(JSON.stringify(data, undefined, 2)))),
+const count = Number(process.argv[2] ?? "8")
+const seed = Number(process.argv[3] ?? "42")
+
+const program = generateConfigs({ count, seed }).pipe(
+  Effect.tap((configs) => Effect.sync(() => console.log(JSON.stringify(configs, undefined, 2)))),
 )
 
 await Effect.runPromise(program)

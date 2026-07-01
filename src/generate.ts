@@ -1,30 +1,41 @@
-import { DateTime, Effect } from "effect"
-import { Model } from "../opencode-latest/packages/schema/src/model.ts"
-import { Project } from "../opencode-latest/packages/schema/src/project.ts"
-import { Provider } from "../opencode-latest/packages/schema/src/provider.ts"
-import { AbsolutePath } from "../opencode-latest/packages/schema/src/schema.ts"
-import { Session } from "../opencode-latest/packages/schema/src/session.ts"
+import { Effect, Schema } from "effect"
+import { configProfiles, generateConfigJson, type ConfigJson } from "./generators/config.js"
 
-export interface ProbeData {
-  readonly sessions: ReadonlyArray<typeof Session.Info.Type>
-  readonly models: ReadonlyArray<typeof Model.Ref.Type>
+export { configProfiles, generateConfigJson } from "./generators/config.js"
+export type { ConfigJson, ConfigProfile } from "./generators/config.js"
+export { generateFilesForConfig } from "./generators/filesystem.js"
+export type { VirtualFile, VirtualFileTree } from "./generators/filesystem.js"
+export { generateInitialState, generateInitialStates } from "./generators/initial-state.js"
+export type { InitialState, InitialStateOptions } from "./generators/initial-state.js"
+export { deriveModel } from "./model/derive.js"
+export type { ModelAgent, ModelPermission, ModelSkill, ProbeModel } from "./model/model.js"
+
+// Imported through a variable so `tsgo` does not typecheck all of OpenCode
+// core; the runtime import still tracks the latest checkout.
+const opencodeConfigModule = "../opencode-latest/packages/core/src/config.ts"
+
+export interface GenerateConfigsOptions {
+  readonly count?: number
+  readonly seed?: number
 }
 
-export const generateProbeData = Effect.sync((): ProbeData => {
-  const model = Model.Ref.make({ providerID: Provider.ID.make("opencode"), id: Model.ID.make("gpt-5.5") })
-  return {
-    models: [model],
-    sessions: [
-      Session.Info.make({
-        id: Session.ID.make("ses_probe_00000000000000000000000000"),
-        projectID: Project.ID.make("global"),
-        title: "Probe session",
-        model,
-        cost: 0,
-        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-        time: { created: DateTime.makeUnsafe(0), updated: DateTime.makeUnsafe(0) },
-        location: { directory: AbsolutePath.make("/probe") },
-      }),
-    ],
-  }
-})
+/**
+ * Generates realistic OpenCode config.json objects and validates every one of
+ * them against the latest checkout's `Config.Info` schema, so the generator
+ * fails loudly whenever upstream config contracts change.
+ */
+export const generateConfigs = (
+  options?: GenerateConfigsOptions,
+): Effect.Effect<ReadonlyArray<ConfigJson>> =>
+  Effect.promise(async () => {
+    const { Config } = await import(opencodeConfigModule)
+    const decode = Schema.decodeUnknownSync(Config.Info)
+    const count = options?.count ?? 8
+    const seed = options?.seed ?? 1
+    return Array.from({ length: count }, (_, index) => {
+      const profile = configProfiles[index % configProfiles.length]!
+      const config = generateConfigJson({ seed: seed + index, profile })
+      decode(config)
+      return config
+    })
+  })
