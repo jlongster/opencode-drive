@@ -1,18 +1,9 @@
 import { Effect, Schema } from "effect"
-import { configProfiles, generateConfigJson, type ConfigJson } from "./generators/config.js"
-
-export { configProfiles, generateConfigJson } from "./generators/config.js"
-export type { ConfigJson, ConfigProfile } from "./generators/config.js"
-export { generateFilesForConfig } from "./generators/filesystem.js"
-export type { VirtualFile, VirtualFileTree } from "./generators/filesystem.js"
-export { generateInitialState, generateInitialStates } from "./generators/initial-state.js"
-export type { InitialState, InitialStateOptions } from "./generators/initial-state.js"
-export { deriveModel } from "./model/derive.js"
-export type { ModelAgent, ModelPermission, ModelSkill, ProbeModel } from "./model/model.js"
+import { configProfiles, generateConfigJson, type ConfigJson } from "./config.js"
 
 // Imported through a variable so `tsgo` does not typecheck all of OpenCode
 // core; the runtime import still tracks the latest checkout.
-const opencodeConfigModule = "../opencode-latest/packages/core/src/config.ts"
+const opencodeConfigModule = "../../opencode-latest/packages/core/src/config.ts"
 
 export interface GenerateConfigsOptions {
   readonly count?: number

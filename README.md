@@ -17,24 +17,49 @@ bun run update:opencode     # pull latest opencode + reinstall its deps
 Three layers, built for model-based testing:
 
 ```text
-Initial State                      Model                       Commands (later)
-  config.json                        simplified expected         actions against OpenCode
-  virtual filesystem        ->       state derived from    ->    expected model transitions
-  environment                        the initial state
+Initial State                      Model                       Client
+  config.json                        simplified expected         drives OpenCode's simulation
+  virtual filesystem        ->       state derived from    ->    WebSocket control server
+  environment                        the initial state           (OPENCODE_SIMULATION=1)
 ```
 
-- `src/generators/random.ts` — deterministic seeded RNG (no fast-check)
-- `src/generators/config.ts` — profile-based realistic config generation
-  (`minimal`, `typical`, `maximal`, `edge`)
-- `src/generators/filesystem.ts` — virtual files coherent with the config
-  (skills referenced by `config.skills` actually exist, etc.)
-- `src/generators/initial-state.ts` — `{ config, files, env }` bundles
-- `src/model/model.ts` — `ProbeModel`, the facts we assert against OpenCode
-- `src/model/derive.ts` — `deriveModel(initialState)` interprets config + files
-- `src/generate.ts` — public API; every generated config is validated against
-  the latest checkout's `Config.Info` schema at runtime
+The source is grouped into these sections:
 
-The CLI (`src/index.ts`) prints plain OpenCode `config.json` objects only.
+- `src/generators/` — initial-state generation
+  - `random.ts` — deterministic seeded RNG (no fast-check)
+  - `config.ts` — profile-based realistic config generation
+    (`minimal`, `typical`, `maximal`, `edge`)
+  - `filesystem.ts` — virtual files coherent with the config
+    (skills referenced by `config.skills` actually exist, etc.)
+  - `initial-state.ts` — `{ config, files, env }` bundles
+  - `generate.ts` — batch generation; every config is validated against the
+    latest checkout's `Config.Info` schema at runtime
+- `src/model/` — the expected-state model
+  - `model.ts` — `ProbeModel`, the facts we assert against OpenCode
+  - `derive.ts` — `deriveModel(initialState)` interprets config + files
+- `src/client/` — simulation control client
+  - `protocol.ts` — wire types mirroring OpenCode's
+    `packages/tui/src/simulation` JSON-RPC WebSocket protocol
+  - `client.ts` — `SimulationClient`: typed wrappers for every server method
+    (`ui.state`, `ui.action`, `ui.render`, `trace.list`, `trace.clear`,
+    `trace.export`) plus per-action helpers (`typeText`, `pressEnter`, ...)
+
+`src/index.ts` re-exports all three sections. The CLI (`src/cli.ts`) prints
+plain OpenCode `config.json` objects only.
+
+## Driving a running OpenCode
+
+Start OpenCode from the checkout with simulation enabled, then connect:
+
+```ts
+import { connectSimulation } from "opencode-probe"
+
+const client = await connectSimulation() // scans ws://127.0.0.1:40900+
+const state = await client.render()
+await client.typeText("hello")
+const trace = await client.traceExport()
+client.close()
+```
 
 ## Invariant
 
