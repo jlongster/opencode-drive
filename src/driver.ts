@@ -15,6 +15,13 @@ await backend.attach(async (request: OpenedExchange) => {
   await backend.finish(request.id, "stop")
 })
 
+for (let attempt = 0; attempt < 60; attempt++) {
+  const state = await ui.render()
+  if (state.focused.editor) break
+  await new Promise((resolve) => setTimeout(resolve, 250))
+  if (attempt === 59) throw new Error("prompt editor did not become ready")
+}
+
 await ui.typeText(process.argv.slice(2).join(" ") || "Hello from opencode-probe")
 await ui.pressEnter()
 
