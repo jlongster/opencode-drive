@@ -2,6 +2,14 @@
 
 Drive visible, headless, simulated, or real OpenCode instances.
 
+# Skill
+
+Install the skill for agents to use it:
+
+```sh
+npx skills add jlongster/opencode-drive --agent opencode --skill opencode-drive
+```
+
 # Usage
 
 **Start the default detached, headless instance:**
