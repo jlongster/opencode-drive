@@ -1,16 +1,25 @@
-import {
-  Backend,
-  type JsonRpc,
-} from "./protocol.js"
+import { Backend, type JsonRpc } from "./protocol.js"
 
 const defaultBackendPort = 40950
 
 type BackendMethods = {
-  readonly "llm.attach": { readonly params: undefined; readonly result: { readonly attached: true } }
-  readonly "llm.chunk": { readonly params: Backend.ChunkParams; readonly result: { readonly ok: true } }
-  readonly "llm.finish": { readonly params: Partial<Backend.FinishParams> & Pick<Backend.FinishParams, "id">; readonly result: { readonly ok: true } }
-  readonly "llm.disconnect": { readonly params: Backend.DisconnectParams; readonly result: { readonly ok: true } }
-  readonly "llm.pending": { readonly params: undefined; readonly result: { readonly exchanges: ReadonlyArray<Backend.OpenedExchange> } }
+  readonly "llm.attach": {
+    readonly params: undefined
+    readonly result: { readonly attached: true }
+  }
+  readonly "llm.chunk": {
+    readonly params: Backend.ChunkParams
+    readonly result: { readonly ok: true }
+  }
+  readonly "llm.finish": {
+    readonly params: Partial<Backend.FinishParams> &
+      Pick<Backend.FinishParams, "id">
+    readonly result: { readonly ok: true }
+  }
+  readonly "llm.disconnect": {
+    readonly params: Backend.DisconnectParams
+    readonly result: { readonly ok: true }
+  }
 }
 
 type BackendMethodName = keyof BackendMethods
@@ -45,21 +54,37 @@ export class BackendSimulationClient {
   private readonly socket: WebSocket
   private readonly timeout: number
   private nextId = 1
+  private closing = false
   private readonly pending = new Map<number, Waiter>()
-  private readonly llmRequests = new Set<(request: Backend.OpenedExchange) => void>()
+  private readonly llmRequests = new Set<
+    (request: Backend.OpenedExchange) => void
+  >()
 
   private constructor(socket: WebSocket, url: string, timeout: number) {
     this.socket = socket
     this.url = url
     this.timeout = timeout
-    socket.addEventListener("message", (event) => this.onMessage(String(event.data)))
-    socket.addEventListener("close", () => this.rejectAll(new BackendSimulationError("connection closed")))
-    socket.addEventListener("error", () => this.rejectAll(new BackendSimulationError("connection error")))
+    socket.addEventListener("message", (event) =>
+      this.onMessage(String(event.data)),
+    )
+    socket.addEventListener("close", () =>
+      this.rejectAll(new BackendSimulationError("connection closed")),
+    )
+    socket.addEventListener("error", () =>
+      this.rejectAll(new BackendSimulationError("connection error")),
+    )
   }
 
-  static async connect(options?: BackendSimulationClientOptions): Promise<BackendSimulationClient> {
+  static async connect(
+    options?: BackendSimulationClientOptions,
+  ): Promise<BackendSimulationClient> {
     const timeout = options?.timeout ?? 30_000
-    if (options?.url !== undefined) return new BackendSimulationClient(await open(options.url), options.url, timeout)
+    if (options?.url !== undefined)
+      return new BackendSimulationClient(
+        await open(options.url),
+        options.url,
+        timeout,
+      )
     const first = options?.port ?? defaultBackendPort
     const attempts = options?.portAttempts ?? 10
     for (let offset = 0; offset < attempts; offset++) {
@@ -68,28 +93,52 @@ export class BackendSimulationClient {
         return new BackendSimulationClient(await open(url), url, timeout)
       } catch {}
     }
-    throw new BackendSimulationError(`no backend simulation server found on ports ${first}-${first + attempts - 1}`)
+    throw new BackendSimulationError(
+      `no backend simulation server found on ports ${first}-${first + attempts - 1}`,
+    )
   }
 
   async call<M extends BackendMethodName>(
     method: M,
     params?: BackendMethods[M]["params"],
   ): Promise<BackendMethods[M]["result"]> {
-    if (this.socket.readyState !== WebSocket.OPEN) throw new BackendSimulationError("connection is not open", method)
+    if (this.socket.readyState !== WebSocket.OPEN)
+      throw new BackendSimulationError("connection is not open", method)
     const id = this.nextId++
     const promise = new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
-        reject(new BackendSimulationError(`timed out after ${this.timeout}ms`, method))
+        reject(
+          new BackendSimulationError(
+            `timed out after ${this.timeout}ms`,
+            method,
+          ),
+        )
       }, this.timeout)
       this.pending.set(id, { method, resolve, reject, timer })
     })
-    this.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, ...(params === undefined ? {} : { params }) }))
+    this.socket.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id,
+        method,
+        ...(params === undefined ? {} : { params }),
+      }),
+    )
     return (await promise) as BackendMethods[M]["result"]
   }
 
-  async attach(onRequest: (request: Backend.OpenedExchange) => void | Promise<void>) {
-    this.llmRequests.add((request) => void onRequest(request))
+  async attach(
+    onRequest: (request: Backend.OpenedExchange) => void | Promise<void>,
+  ) {
+    this.llmRequests.add((request) => {
+      void Promise.resolve(onRequest(request)).catch((error) => {
+        if (!this.closing)
+          console.error(
+            `error: ${error instanceof Error ? error.message : String(error)}`,
+          )
+      })
+    })
     return await this.call("llm.attach")
   }
 
@@ -98,18 +147,18 @@ export class BackendSimulationClient {
   }
 
   finish(id: string, reason?: Backend.FinishReason) {
-    return this.call("llm.finish", { id, ...(reason === undefined ? {} : { reason }) })
+    return this.call("llm.finish", {
+      id,
+      ...(reason === undefined ? {} : { reason }),
+    })
   }
 
   disconnect(id: string) {
     return this.call("llm.disconnect", { id })
   }
 
-  pendingExchanges() {
-    return this.call("llm.pending")
-  }
-
   close() {
+    this.closing = true
     this.socket.close()
   }
 
@@ -118,7 +167,8 @@ export class BackendSimulationClient {
     if (message === undefined) return
     if ("method" in message) {
       if (message.method === "llm.request") {
-        for (const listener of this.llmRequests) listener(message.params as Backend.OpenedExchange)
+        for (const listener of this.llmRequests)
+          listener(message.params as Backend.OpenedExchange)
       }
       return
     }
@@ -127,7 +177,10 @@ export class BackendSimulationClient {
     if (waiter === undefined) return
     this.pending.delete(message.id)
     clearTimeout(waiter.timer)
-    if (message.error) waiter.reject(new BackendSimulationError(message.error.message, waiter.method))
+    if (message.error)
+      waiter.reject(
+        new BackendSimulationError(message.error.message, waiter.method),
+      )
     else waiter.resolve(message.result)
   }
 
@@ -140,13 +193,21 @@ export class BackendSimulationClient {
   }
 }
 
-function parseResponse(data: string): JsonRpc.Response | { readonly method: string; readonly params: unknown } | undefined {
+function parseResponse(
+  data: string,
+):
+  | JsonRpc.Response
+  | { readonly method: string; readonly params: unknown }
+  | undefined {
   try {
     const value = JSON.parse(data) as unknown
     if (typeof value !== "object" || value === null) return undefined
     if (!("jsonrpc" in value) || value.jsonrpc !== "2.0") return undefined
     if ("method" in value && typeof value.method === "string") {
-      return { method: value.method, params: "params" in value ? value.params : undefined }
+      return {
+        method: value.method,
+        params: "params" in value ? value.params : undefined,
+      }
     }
     if (!("id" in value)) return undefined
     return value as JsonRpc.Response
@@ -175,5 +236,6 @@ function open(url: string): Promise<WebSocket> {
   })
 }
 
-export const connectBackendSimulation = (options?: BackendSimulationClientOptions): Promise<BackendSimulationClient> =>
-  BackendSimulationClient.connect(options)
+export const connectBackendSimulation = (
+  options?: BackendSimulationClientOptions,
+): Promise<BackendSimulationClient> => BackendSimulationClient.connect(options)

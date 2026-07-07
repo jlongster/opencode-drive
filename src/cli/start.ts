@@ -1,98 +1,123 @@
-import { resolve } from "node:path"
-import { executeCommands } from "./commands.js"
-import { runCampaign } from "../experimental/cli-campaign.js"
-import { runDriver } from "./driver.js"
 import { launchInstance } from "./instance.js"
+import { connectMockBackend } from "./mock-backend.js"
+import { runScript } from "./script.js"
+import { listenControl } from "./control.js"
 import type { StartOptions } from "./types.js"
-import { join } from "node:path"
 
 export async function start(options: StartOptions) {
-  if (options.campaign) return runCampaign(options)
   const instance = await launchInstance({
-    name: options.name,
     command: options.command,
     dev: options.dev,
     state: options.state,
+    scripted: options.script !== undefined,
     visible: options.visible,
   })
-  console.error(`opencode-drive: ${instance.manifest.name}`)
-  console.error(`opencode-drive: artifacts ${instance.manifest.artifacts}`)
-  console.error(`opencode-drive: send commands with opencode-drive send --name ${instance.manifest.name}`)
-  if (options.detach) {
-    await instance.waitForDrive("both")
-    await instance.detach()
-    return
-  }
   const interrupt = () => void instance.stop()
-  const stopRestart = options.visible ? watchVisibleRestarts(instance) : () => {}
+  let completed = false
+  let current: ReturnType<typeof run> | undefined
+  let restarting: Promise<void> | undefined
   process.once("SIGINT", interrupt)
   process.once("SIGTERM", interrupt)
+  const closeControl = options.visible
+    ? await listenControl(() => {
+        if (restarting) return restarting
+        restarting = (async () => {
+          const previous = current
+          previous?.abort.abort(new Error("script restarted"))
+          await previous?.promise.catch(() => undefined)
+          await instance.restart()
+          current = run(options, instance)
+          await current.ready
+        })().finally(() => {
+          restarting = undefined
+        })
+        return restarting
+      })
+    : undefined
   try {
-    if (options.commands.length > 0) {
-      await instance.waitForDrive("both")
-      const result = await executeCommands(instance.manifest, options.commands)
-      await instance.stop()
-      if (options.commands.length === 1 && ["ui.screenshot", "ui.end-record"].includes(options.commands[0]?.operation ?? "")) {
-        console.log(result.results[0]?.result)
-        return
-      }
-      if (options.commands.length === 1 && ["llm.pending", "ui.state", "ui.start-record"].includes(options.commands[0]?.operation ?? "")) {
-        console.log(JSON.stringify(result.results[0]?.result, undefined, 2))
-        return
-      }
-      console.log("success")
+    current = run(options, instance)
+    if (options.visible) {
+      const status = await instance.wait()
+      if (status !== 0) process.exitCode = status
       return
     }
-    if (options.driver) {
-      await instance.waitForDrive("both")
-      await runDriver(resolve(options.driver), instance.manifest)
-      return
+    while (true) {
+      const active: NonNullable<typeof current> = current
+      await active.promise
+      if (active !== current) continue
+      completed = true
+      break
     }
-    const status = await instance.wait()
-    if (status !== 0) process.exitCode = status
   } finally {
     process.off("SIGINT", interrupt)
     process.off("SIGTERM", interrupt)
-    stopRestart()
+    current?.abort.abort(new Error("opencode-drive stopped"))
+    await closeControl?.()
     await instance.stop()
+    if (options.script && !options.visible)
+      report(instance, completed ? "completed" : undefined)
   }
 }
 
-function watchVisibleRestarts(instance: Awaited<ReturnType<typeof launchInstance>>) {
-  const request = join(instance.manifest.artifacts, "restart-request.json")
-  const response = join(instance.manifest.artifacts, "restart-response.json")
-  const state = { token: undefined as string | undefined, busy: false }
-  const timer = setInterval(() => {
-    if (state.busy) return
-    state.busy = true
-    void handleVisibleRestart(instance, request, response, state).finally(() => {
-      state.busy = false
-    })
-  }, 50)
-  return () => clearInterval(timer)
-}
-
-async function handleVisibleRestart(
+function run(
+  options: StartOptions,
   instance: Awaited<ReturnType<typeof launchInstance>>,
-  request: string,
-  response: string,
-  state: { token: string | undefined },
 ) {
-  const value: unknown = await Bun.file(request).json().catch(() => undefined)
-  if (!isRestartRequest(value) || value.token === state.token) return
-  state.token = value.token
-  try {
-    await instance.restart()
-    await Bun.write(response, `${JSON.stringify({ token: value.token, success: true })}\n`)
-  } catch (error) {
-    await Bun.write(response, `${JSON.stringify({
-      token: value.token,
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    })}\n`)
+  const abort = new AbortController()
+  const child = instance.child
+  let ready!: () => void
+  const readiness = new Promise<void>((resolve) => {
+    ready = resolve
+  })
+  return {
+    abort,
+    ready: readiness,
+    promise: (async () => {
+      await instance.waitForDrive("both")
+      if (options.script) {
+        const script = runScript(
+          options.script,
+          instance.artifacts,
+          instance.endpoints,
+          abort.signal,
+        )
+        ready()
+        await script
+        if (options.visible) {
+          await Promise.race([
+            child.exited,
+            new Promise<void>((resolve) => {
+              abort.signal.addEventListener("abort", () => resolve(), {
+                once: true,
+              })
+            }),
+          ])
+        }
+        return
+      }
+      const mock = await connectMockBackend(instance.endpoints.backend)
+      ready()
+      abort.signal.addEventListener("abort", () => mock.close(), { once: true })
+      if (!options.visible) report(instance)
+      const status = await Promise.race([
+        child.exited,
+        new Promise<number>((resolve) => {
+          abort.signal.addEventListener("abort", () => resolve(0), {
+            once: true,
+          })
+        }),
+      ])
+      mock.close()
+      if (status !== 0 && !abort.signal.aborted) process.exitCode = status
+    })(),
   }
 }
 
-function isRestartRequest(value: unknown): value is { readonly token: string } {
-  return typeof value === "object" && value !== null && "token" in value && typeof value.token === "string"
+function report(
+  instance: Awaited<ReturnType<typeof launchInstance>>,
+  status?: string,
+) {
+  if (status) console.error(`opencode-drive: ${status}`)
+  console.error(`opencode-drive: artifacts ${instance.artifacts}`)
+  console.error(`opencode-drive: logs ${instance.logs}`)
 }

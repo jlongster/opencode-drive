@@ -7,64 +7,69 @@ description: Start and drive OpenCode instances for UI testing, simulation, scre
 
 Use `opencode-drive` to automate OpenCode through its drive WebSockets.
 
-## Use Cases
-
-- Test the TUI without manual input.
-- Run isolated simulated instances.
-- Drive an existing real or development instance.
-- Capture screenshots or recordings.
-- Inspect or answer simulated LLM requests.
-
 ## Start
 
-Always use `--name` to give the instance a unique name:
+Start one headless simulated instance on the fixed default ports:
 
 ```bash
-bunx opencode-drive start --name demo
+bunx opencode-drive start
 ```
+
+Add `--visible` to render the TUI in the current terminal.
+
+Only one driven instance can run at a time.
+
+Non-scripted starts automatically attach a basic mock model. Use `--script` to control LLM responses yourself.
+
+Visible starts support `opencode-drive restart`. Restart replaces the OpenCode child and reruns its script. Headless script runs exit when complete and do not support restart.
 
 ## Drive The UI
 
 ```bash
-# Type and submit a prompt
-bunx opencode-drive send --name demo \
+bunx opencode-drive send \
   --command.ui.type '{"text":"Explain this project briefly"}' \
   --command.ui.enter
 
-# Read structural UI state
-bunx opencode-drive send --name demo --command.ui.state
-
-# Take a screenshot; prints the PNG path
-bunx opencode-drive send --name demo --command.ui.screenshot
+bunx opencode-drive send --command.ui.state
+bunx opencode-drive send --command.ui.screenshot
 ```
 
-## Command Actions
+Run `opencode-drive api` for the complete UI command API. LLM simulation is intentionally unavailable through `send`.
 
-For full details of the available commands, run `opencode-drive api` to see the full API. 
+## Scripted Simulation
 
-- `--command.ui.type <json>`: Type text with `{"text":"hello"}`.
-- `--command.ui.press <json>`: Press a key with `{"key":"x","modifiers":{"ctrl":true}}`.
-- `--command.ui.enter`: Press Enter.
-- `--command.ui.arrow <json>`: Press an arrow with `{"direction":"down"}`.
-- `--command.ui.focus <json>`: Focus with `{"target":1}`.
-- `--command.ui.click <json>`: Click with `{"target":1,"x":10,"y":5}`.
-- `--command.ui.state`: Return focus, elements, and available actions as JSON.
-- `--command.ui.screenshot`: Take a screenshot and print its PNG path.
-- `--command.ui.start-record`: Start recording the UI.
-- `--command.ui.end-record`: Stop recording and print the recording path.
-- `--command.llm.pending`: List pending simulated LLM exchanges.
-- `--command.llm.chunk <json>`: Send `{"id":"ex_1","items":[...]}` response items.
-- `--command.llm.finish <json>`: Finish with `{"id":"ex_1","reason":"stop"}`.
-- `--command.llm.disconnect <json>`: Disconnect with `{"id":"ex_1"}`.
-
-## Logs
-
-To inspect logs, run `opencode-drive describe --name demo` to get the log paths. `demo` is just an example name here, make sure you always pass the correct instance name.
-
-## Stopping
-
-When you are finished driving the app, make sure you stop the instance:
+Use a script when controlling simulated LLM exchanges:
 
 ```bash
-bunx opencode-drive stop --name demo
+bunx opencode-drive start --script ./drive.ts
 ```
+
+The script default-exports a function that receives connected clients:
+
+```ts
+import { defineScript } from "opencode-drive"
+
+export default defineScript(async ({ ui, backend, artifacts }) => {
+  await backend.attach(async (request) => {
+    await backend.chunk(request.id, [{ type: "textDelta", text: "hello" }])
+    await backend.finish(request.id)
+  })
+  await ui.typeText("Say hello")
+  await ui.pressEnter()
+})
+```
+
+The command reports the artifact and log directories when it exits.
+
+## UI Commands
+
+- `--command.ui.type <json>`
+- `--command.ui.press <json>`
+- `--command.ui.enter`
+- `--command.ui.arrow <json>`
+- `--command.ui.focus <json>`
+- `--command.ui.click <json>`
+- `--command.ui.state`
+- `--command.ui.screenshot`
+- `--command.ui.start-record`
+- `--command.ui.end-record`

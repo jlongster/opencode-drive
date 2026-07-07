@@ -31,7 +31,10 @@ export namespace JsonRpc {
 
   export const decodeRequest = Schema.decodeUnknownSync(Request)
 
-  export function success(id: Request["id"], result: unknown): Response | undefined {
+  export function success(
+    id: Request["id"],
+    result: unknown,
+  ): Response | undefined {
     if (id === undefined) return undefined
     return { jsonrpc: "2.0", id, result: result as Json }
   }
@@ -56,15 +59,29 @@ export namespace Frontend {
     super: Schema.optional(Schema.Boolean),
     hyper: Schema.optional(Schema.Boolean),
   })
-  export interface KeyModifiers extends Schema.Schema.Type<typeof KeyModifiers> {}
+  export interface KeyModifiers extends Schema.Schema.Type<
+    typeof KeyModifiers
+  > {}
 
   export const Action = Schema.Union([
     Schema.Struct({ type: Schema.Literal("ui.type"), text: Schema.String }),
-    Schema.Struct({ type: Schema.Literal("ui.press"), key: Schema.String, modifiers: Schema.optional(KeyModifiers) }),
+    Schema.Struct({
+      type: Schema.Literal("ui.press"),
+      key: Schema.String,
+      modifiers: Schema.optional(KeyModifiers),
+    }),
     Schema.Struct({ type: Schema.Literal("ui.enter") }),
-    Schema.Struct({ type: Schema.Literal("ui.arrow"), direction: Schema.Literals(["up", "down", "left", "right"]) }),
+    Schema.Struct({
+      type: Schema.Literal("ui.arrow"),
+      direction: Schema.Literals(["up", "down", "left", "right"]),
+    }),
     Schema.Struct({ type: Schema.Literal("ui.focus"), target: Schema.Number }),
-    Schema.Struct({ type: Schema.Literal("ui.click"), target: Schema.Number, x: Schema.Number, y: Schema.Number }),
+    Schema.Struct({
+      type: Schema.Literal("ui.click"),
+      target: Schema.Number,
+      x: Schema.Number,
+      y: Schema.Number,
+    }),
   ])
   export type Action = Schema.Schema.Type<typeof Action>
 
@@ -103,24 +120,53 @@ export namespace Frontend {
   export const TypeParams = Schema.Struct({ text: Schema.String })
   export interface TypeParams extends Schema.Schema.Type<typeof TypeParams> {}
 
-  export const PressParams = Schema.Struct({ key: Schema.String, modifiers: Schema.optional(KeyModifiers) })
+  export const PressParams = Schema.Struct({
+    key: Schema.String,
+    modifiers: Schema.optional(KeyModifiers),
+  })
   export interface PressParams extends Schema.Schema.Type<typeof PressParams> {}
 
-  export const ArrowParams = Schema.Struct({ direction: Schema.Literals(["up", "down", "left", "right"]) })
+  export const ArrowParams = Schema.Struct({
+    direction: Schema.Literals(["up", "down", "left", "right"]),
+  })
   export interface ArrowParams extends Schema.Schema.Type<typeof ArrowParams> {}
 
   export const FocusParams = Schema.Struct({ target: Schema.Number })
   export interface FocusParams extends Schema.Schema.Type<typeof FocusParams> {}
 
-  export const ClickParams = Schema.Struct({ target: Schema.Number, x: Schema.Number, y: Schema.Number })
+  export const ClickParams = Schema.Struct({
+    target: Schema.Number,
+    x: Schema.Number,
+    y: Schema.Number,
+  })
   export interface ClickParams extends Schema.Schema.Type<typeof ClickParams> {}
 
   export const Request = Schema.Union([
-    Schema.Struct({ ...JsonRpc.RequestFields, method: Schema.Literal("ui.type"), params: TypeParams }),
-    Schema.Struct({ ...JsonRpc.RequestFields, method: Schema.Literal("ui.press"), params: PressParams }),
-    Schema.Struct({ ...JsonRpc.RequestFields, method: Schema.Literal("ui.arrow"), params: ArrowParams }),
-    Schema.Struct({ ...JsonRpc.RequestFields, method: Schema.Literal("ui.focus"), params: FocusParams }),
-    Schema.Struct({ ...JsonRpc.RequestFields, method: Schema.Literal("ui.click"), params: ClickParams }),
+    Schema.Struct({
+      ...JsonRpc.RequestFields,
+      method: Schema.Literal("ui.type"),
+      params: TypeParams,
+    }),
+    Schema.Struct({
+      ...JsonRpc.RequestFields,
+      method: Schema.Literal("ui.press"),
+      params: PressParams,
+    }),
+    Schema.Struct({
+      ...JsonRpc.RequestFields,
+      method: Schema.Literal("ui.arrow"),
+      params: ArrowParams,
+    }),
+    Schema.Struct({
+      ...JsonRpc.RequestFields,
+      method: Schema.Literal("ui.focus"),
+      params: FocusParams,
+    }),
+    Schema.Struct({
+      ...JsonRpc.RequestFields,
+      method: Schema.Literal("ui.click"),
+      params: ClickParams,
+    }),
     Schema.Struct({
       ...JsonRpc.RequestFields,
       method: Schema.Literals([
@@ -134,47 +180,86 @@ export namespace Frontend {
   ])
   export type Request = Schema.Schema.Type<typeof Request>
   export const decodeRequest = Schema.decodeUnknownSync(Request)
-
 }
 
 export namespace Backend {
   export const Item = Schema.Union([
     Schema.Struct({ type: Schema.Literal("textDelta"), text: Schema.String }),
-    Schema.Struct({ type: Schema.Literal("reasoningDelta"), text: Schema.String }),
-    Schema.Struct({ type: Schema.Literal("toolCall"), id: Schema.String, name: Schema.String, input: Schema.Json }),
+    Schema.Struct({
+      type: Schema.Literal("reasoningDelta"),
+      text: Schema.String,
+    }),
+    Schema.Struct({
+      type: Schema.Literal("toolCall"),
+      id: Schema.String,
+      name: Schema.String,
+      input: Schema.Json,
+    }),
     Schema.Struct({ type: Schema.Literal("raw"), chunk: Schema.Json }),
   ])
   export type Item = Schema.Schema.Type<typeof Item>
 
-  export const FinishReason = Schema.Literals(["stop", "tool-calls", "length", "content-filter"])
+  export const FinishReason = Schema.Literals([
+    "stop",
+    "tool-calls",
+    "length",
+    "content-filter",
+  ])
   export type FinishReason = Schema.Schema.Type<typeof FinishReason>
 
-  export const ChunkParams = Schema.Struct({ id: Schema.String, items: Schema.Array(Item) })
+  export const ChunkParams = Schema.Struct({
+    id: Schema.String,
+    items: Schema.Array(Item),
+  })
   export interface ChunkParams extends Schema.Schema.Type<typeof ChunkParams> {}
 
   export const FinishParams = Schema.Struct({
     id: Schema.String,
-    reason: FinishReason.pipe(Schema.withDecodingDefault(Effect.succeed("stop" as const))),
+    reason: FinishReason.pipe(
+      Schema.withDecodingDefault(Effect.succeed("stop" as const)),
+    ),
   })
-  export interface FinishParams extends Schema.Schema.Type<typeof FinishParams> {}
+  export interface FinishParams extends Schema.Schema.Type<
+    typeof FinishParams
+  > {}
 
   export const DisconnectParams = Schema.Struct({ id: Schema.String })
-  export interface DisconnectParams extends Schema.Schema.Type<typeof DisconnectParams> {}
+  export interface DisconnectParams extends Schema.Schema.Type<
+    typeof DisconnectParams
+  > {}
 
   export const Request = Schema.Union([
-    Schema.Struct({ ...JsonRpc.RequestFields, method: Schema.Literal("llm.chunk"), params: ChunkParams }),
-    Schema.Struct({ ...JsonRpc.RequestFields, method: Schema.Literal("llm.finish"), params: FinishParams }),
-    Schema.Struct({ ...JsonRpc.RequestFields, method: Schema.Literal("llm.disconnect"), params: DisconnectParams }),
     Schema.Struct({
       ...JsonRpc.RequestFields,
-      method: Schema.Literals(["llm.attach", "llm.pending"]),
+      method: Schema.Literal("llm.chunk"),
+      params: ChunkParams,
+    }),
+    Schema.Struct({
+      ...JsonRpc.RequestFields,
+      method: Schema.Literal("llm.finish"),
+      params: FinishParams,
+    }),
+    Schema.Struct({
+      ...JsonRpc.RequestFields,
+      method: Schema.Literal("llm.disconnect"),
+      params: DisconnectParams,
+    }),
+    Schema.Struct({
+      ...JsonRpc.RequestFields,
+      method: Schema.Literal("llm.attach"),
     }),
   ])
   export type Request = Schema.Schema.Type<typeof Request>
   export const decodeRequest = Schema.decodeUnknownSync(Request)
 
-  export const OpenedExchange = Schema.Struct({ id: Schema.String, url: Schema.String, body: Schema.Json })
-  export interface OpenedExchange extends Schema.Schema.Type<typeof OpenedExchange> {}
+  export const OpenedExchange = Schema.Struct({
+    id: Schema.String,
+    url: Schema.String,
+    body: Schema.Json,
+  })
+  export interface OpenedExchange extends Schema.Schema.Type<
+    typeof OpenedExchange
+  > {}
 
   export const NetworkLogEntry = Schema.Struct({
     time: Schema.Number,
@@ -182,8 +267,9 @@ export namespace Backend {
     url: Schema.String,
     matched: Schema.Boolean,
   })
-  export interface NetworkLogEntry extends Schema.Schema.Type<typeof NetworkLogEntry> {}
-
+  export interface NetworkLogEntry extends Schema.Schema.Type<
+    typeof NetworkLogEntry
+  > {}
 }
 
 export * as SimulationProtocol from "./index"

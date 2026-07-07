@@ -3,16 +3,16 @@ import { extractCommands } from "../../src/cli/parse.js"
 
 describe("drive CLI parser", () => {
   test("preserves namespaced command order", () => {
-    expect(extractCommands([
-      "send",
-      "--name",
-      "demo",
-      "--command.ui.type",
-      '{"text":"hello"}',
-      "--command.ui.screenshot",
-      "--command.ui.state",
-    ])).toEqual({
-      args: ["send", "--name", "demo"],
+    expect(
+      extractCommands([
+        "send",
+        "--command.ui.type",
+        '{"text":"hello"}',
+        "--command.ui.screenshot",
+        "--command.ui.state",
+      ]),
+    ).toEqual({
+      args: ["send"],
       app: [],
       commands: [
         { operation: "ui.type", value: '{"text":"hello"}' },
@@ -23,14 +23,31 @@ describe("drive CLI parser", () => {
   })
 
   test("keeps the custom OpenCode argv intact", () => {
-    expect(extractCommands(["start", "--name", "demo", "--", "bun", "app.ts", "--standalone", "--help"])).toEqual({
-      args: ["start", "--name", "demo"],
+    expect(
+      extractCommands([
+        "start",
+        "--",
+        "bun",
+        "app.ts",
+        "--standalone",
+        "--help",
+      ]),
+    ).toEqual({
+      args: ["start"],
       app: ["bun", "app.ts", "--standalone", "--help"],
       commands: [],
     })
   })
 
   test("rejects unknown namespaced commands", () => {
-    expect(() => extractCommands(["send", "--command.unknown"])).toThrow("unknown drive command")
+    expect(() => extractCommands(["send", "--command.unknown"])).toThrow(
+      "unknown drive command",
+    )
+  })
+
+  test("rejects LLM commands", () => {
+    expect(() => extractCommands(["send", "--command.llm.pending"])).toThrow(
+      "unknown drive command",
+    )
   })
 })

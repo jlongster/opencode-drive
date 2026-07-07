@@ -1,20 +1,35 @@
-import { connectBackendSimulation, connectSimulation, type OpenedExchange } from "../client/index.js"
+import {
+  connectBackendSimulation,
+  connectSimulation,
+  type OpenedExchange,
+} from "../client/index.js"
 import { isRunning } from "./flows/index.js"
 
-const ui = await connectSimulation({ url: requiredEnv("OPENCODE_SIMULATION_UI_WS") })
-const backend = await connectBackendSimulation({ url: requiredEnv("OPENCODE_SIMULATION_BACKEND_WS") })
+const ui = await connectSimulation({
+  url: requiredEnv("OPENCODE_SIMULATION_UI_WS"),
+})
+const backend = await connectBackendSimulation({
+  url: requiredEnv("OPENCODE_SIMULATION_BACKEND_WS"),
+})
 const requestOpened = deferred()
 const releaseResponse = deferred()
 const responseFinished = deferred()
 
 await backend.attach(async (request: OpenedExchange) => {
   if (isTitleRequest(request)) {
-    await backend.chunk(request.id, [{ type: "textDelta", text: "Stale running reproduction" }])
+    await backend.chunk(request.id, [
+      { type: "textDelta", text: "Stale running reproduction" },
+    ])
     await backend.finish(request.id, "stop")
     return
   }
   requestOpened.resolve()
-  await backend.chunk(request.id, [{ type: "textDelta", text: "The provider turn is finishing while events are disconnected." }])
+  await backend.chunk(request.id, [
+    {
+      type: "textDelta",
+      text: "The provider turn is finishing while events are disconnected.",
+    },
+  ])
   await releaseResponse.promise
   await backend.finish(request.id, "stop")
   responseFinished.resolve()
@@ -22,19 +37,23 @@ await backend.attach(async (request: OpenedExchange) => {
 
 try {
   await waitFor("prompt editor", async () => (await ui.state()).focused.editor)
-  await ui.typeText("Reproduce stale running status across an event-stream reconnect")
+  await ui.typeText(
+    "Reproduce stale running status across an event-stream reconnect",
+  )
   await ui.pressEnter()
   await requestOpened.promise
   await waitFor("running TUI", async () => isRunning(await ui.state()))
 
   releaseResponse.resolve()
   await responseFinished.promise
-  await waitFor("provider drain", async () => (await backend.pendingExchanges()).exchanges.length === 0)
   await Bun.sleep(1_000)
 
   const state = await ui.state()
-  if (!isRunning(state)) throw new Error("stale running status was not reproduced")
-  console.log("REPRODUCED: backend provider work is idle while the TUI still displays running.")
+  if (!isRunning(state))
+    throw new Error("stale running status was not reproduced")
+  console.log(
+    "REPRODUCED: backend provider work is idle while the TUI still displays running.",
+  )
   await Bun.sleep(Number(process.env.OPENCODE_PROBE_HOLD_MS ?? "10000"))
 } finally {
   ui.close()
@@ -56,15 +75,28 @@ function requiredEnv(name: string) {
 }
 
 function isTitleRequest(request: OpenedExchange) {
-  if (typeof request.body !== "object" || request.body === null || !("messages" in request.body)) return false
+  if (
+    typeof request.body !== "object" ||
+    request.body === null ||
+    !("messages" in request.body)
+  )
+    return false
   const messages = request.body.messages
   if (!Array.isArray(messages)) return false
   const first = messages[0]
-  if (typeof first !== "object" || first === null || !("content" in first)) return false
-  return typeof first.content === "string" && first.content.includes("You are a title generator")
+  if (typeof first !== "object" || first === null || !("content" in first))
+    return false
+  return (
+    typeof first.content === "string" &&
+    first.content.includes("You are a title generator")
+  )
 }
 
-async function waitFor(label: string, check: () => Promise<boolean>, timeout = 30_000) {
+async function waitFor(
+  label: string,
+  check: () => Promise<boolean>,
+  timeout = 30_000,
+) {
   const deadline = Date.now() + timeout
   while (Date.now() < deadline) {
     if (await check()) return
