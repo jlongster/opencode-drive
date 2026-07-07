@@ -28,7 +28,7 @@ const config = (seed: number) => {
 const options = parseArgs(process.argv.slice(2))
 const weights = parseWeightsFromArgs(process.argv.slice(2))
 const enabledTools = parseEnabledTools(process.argv.slice(2)) ?? undefined
-const root = path.resolve(options.out)
+const root = "/tmp/opencode-drive-campaign"
 await Bun.$`rm -rf ${root}`.quiet()
 await Bun.$`mkdir -p ${root}`.quiet()
 const results: FlowResult[] = []
@@ -42,7 +42,7 @@ const coverage = {
 for (let index = 0; index < options.count; index++) {
   const seed = options.seed + index
   const directory = path.join(root, `flow-${String(index + 1).padStart(2, "0")}-${seed}`)
-  const state = path.join(directory, "state", "project")
+  const state = path.join(directory, "state", "files")
   await Bun.$`mkdir -p ${path.join(state, ".config/opencode")} ${path.join(state, "src")}`.quiet()
   await Bun.$`mkdir -p ${path.join(state, ".opencode/skills/simulation-demo")}`.quiet()
   const scenario = generateFlow(seed, { turns: options.turns, weights, enabledTools })
@@ -133,7 +133,6 @@ function parseArgs(args: string[]) {
     count: Number(value("--count", "10")),
     seed: Number(value("--seed", String(Date.now() % 1_000_000))),
     turns: Number(value("--turns", "7")),
-    out: value("--out", "/tmp/opencode-probe-campaign"),
     renderer: value("--renderer", "fake") === "visible" ? "visible" as const : "fake" as const,
     stepDelay: Number(value("--step-delay", "0")),
     chunkDelay: Number(value("--chunk-delay", "30")),

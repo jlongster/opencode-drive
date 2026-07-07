@@ -1,19 +1,86 @@
-import type { SimulationProtocol } from "../opencode-simulation.js"
+export type Json = null | boolean | number | string | ReadonlyArray<Json> | { readonly [key: string]: Json }
 
-export type JsonRpcRequest = SimulationProtocol.JsonRpc.Request
-export type JsonRpcResponse = SimulationProtocol.JsonRpc.Response
+export interface JsonRpcRequest {
+  readonly jsonrpc: "2.0"
+  readonly id?: string | number | null
+  readonly method: string
+  readonly params?: Json
+}
 
-export type KeyModifiers = SimulationProtocol.Frontend.KeyModifiers
-export type UiAction = SimulationProtocol.Frontend.Action
-export type UiElement = SimulationProtocol.Frontend.Element
-export type UiState = SimulationProtocol.Frontend.State
-export type TraceRecord = SimulationProtocol.Frontend.TraceRecord
-export type TraceList = SimulationProtocol.Frontend.TraceList
+export interface JsonRpcResponse {
+  readonly jsonrpc: "2.0"
+  readonly id: string | number | null
+  readonly result?: Json
+  readonly error?: { readonly code: number; readonly message: string; readonly data?: Json }
+}
 
-export type BackendItem = SimulationProtocol.Backend.Item
-export type BackendFinishReason = SimulationProtocol.Backend.FinishReason
-export type OpenedExchange = SimulationProtocol.Backend.OpenedExchange
-export type NetworkLogEntry = SimulationProtocol.Backend.NetworkLogEntry
+export interface KeyModifiers {
+  readonly ctrl?: boolean
+  readonly shift?: boolean
+  readonly meta?: boolean
+  readonly super?: boolean
+  readonly hyper?: boolean
+}
+
+export type UiAction =
+  | { readonly type: "typeText"; readonly text: string }
+  | { readonly type: "pressKey"; readonly key: string; readonly modifiers?: KeyModifiers }
+  | { readonly type: "pressEnter" }
+  | { readonly type: "pressArrow"; readonly direction: "up" | "down" | "left" | "right" }
+  | { readonly type: "focus"; readonly target: number }
+  | { readonly type: "click"; readonly target: number; readonly x: number; readonly y: number }
+
+export interface UiElement {
+  readonly id: string
+  readonly num: number
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+  readonly focusable: boolean
+  readonly focused: boolean
+  readonly clickable: boolean
+  readonly editor: boolean
+}
+
+export interface UiState {
+  readonly screen: string
+  readonly focused: { readonly renderable?: number; readonly editor: boolean }
+  readonly elements: ReadonlyArray<UiElement>
+  readonly actions: ReadonlyArray<UiAction>
+}
+
+export interface TraceRecord {
+  readonly id: number
+  readonly time: string
+  readonly type: string
+  readonly data?: Json
+}
+
+export interface TraceList {
+  readonly records: ReadonlyArray<TraceRecord>
+}
+
+export type BackendItem =
+  | { readonly type: "textDelta"; readonly text: string }
+  | { readonly type: "reasoningDelta"; readonly text: string }
+  | { readonly type: "toolCall"; readonly id: string; readonly name: string; readonly input: Json }
+  | { readonly type: "raw"; readonly chunk: Json }
+
+export type BackendFinishReason = "stop" | "tool-calls" | "length" | "content-filter"
+
+export interface OpenedExchange {
+  readonly id: string
+  readonly url: string
+  readonly body: Json
+}
+
+export interface NetworkLogEntry {
+  readonly time: number
+  readonly method: string
+  readonly url: string
+  readonly matched: boolean
+}
 
 export interface TraceCleared {
   readonly cleared: true

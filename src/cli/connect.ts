@@ -1,0 +1,36 @@
+import { tmpdir } from "node:os"
+import { join, resolve } from "node:path"
+import { defaultBackendPort, defaultPort } from "../client/index.js"
+import { executeCommands } from "./commands.js"
+import { runDriver } from "./driver.js"
+import { resolveInstance } from "./registry.js"
+import type { ConnectOptions } from "./types.js"
+
+export async function connect(options: ConnectOptions) {
+  const manifest = options.name ? await resolveInstance(options.name) : defaultManifest()
+  if (options.commands.length > 0) {
+    console.log(JSON.stringify(await executeCommands(manifest, options.commands), undefined, 2))
+    return
+  }
+  if (options.driver) {
+    await runDriver(resolve(options.driver), manifest)
+    return
+  }
+  console.log(JSON.stringify(manifest, undefined, 2))
+}
+
+function defaultManifest() {
+  return {
+    version: 1 as const,
+    name: "default",
+    pid: 0,
+    startedAt: new Date().toISOString(),
+    mode: "real" as const,
+    cwd: process.cwd(),
+    artifacts: join(tmpdir(), "opencode-drive", "default"),
+    endpoints: {
+      ui: `ws://127.0.0.1:${defaultPort}`,
+      backend: `ws://127.0.0.1:${defaultBackendPort}`,
+    },
+  }
+}

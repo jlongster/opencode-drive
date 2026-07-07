@@ -1,7 +1,7 @@
 import path from "node:path"
 
 const root = "/tmp/opencode-probe-stale-running-visible"
-const state = path.join(root, "state", "project")
+const state = path.join(root, "state", "files")
 await Bun.$`rm -rf ${root}`.quiet()
 await Bun.$`mkdir -p ${path.join(state, ".config/opencode")} ${path.join(state, "src")}`.quiet()
 
