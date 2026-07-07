@@ -79,19 +79,26 @@ You are running a development version of OpenCode to work on it. You have anothe
 
 In this case, you don't care about simulation. But you still want OpenCode to see and drive your development version! This _closes the loop_ and gives direct feedback to AI.
 
-To do this, run it with a development version of OpenCode with `--dev` (takes the path to the code) and `--visible` (so you can see it):
+To do this, all you have to do is pass `OPENCODE_DRIVE=1` when running opencode:
 
 ```sh
+# In the opencode repo
+OPENCODE_DRIVE=1 bun run dev
+```
+
+### UI work in simulated mode
+
+If you are doing UI work, you may want to run it in simulated mode. You can do that with this:
+
+```
 bunx opencode-drive start --dev . --visible
 ```
 
-If you are doing UI work, you can use the `restart` command to refresh the UI. The server will still be running in the background so this only restarts the UI:
+The nice thing about this is OpenCode can drive it into the states you are interested in. Additionally, its able to restart the UI itself. The server will still be running in the background so this only restarts the UI:
 
 ```sh
 bunx opencode-drive restart
 ```
-
-If you want to restart the backend, use the `/reload` command.
 
 2. You want opencode to develop itself
 
