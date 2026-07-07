@@ -6,6 +6,7 @@ import { send } from "./send.js"
 import { describe } from "./describe.js"
 import { extractCommands } from "./parse.js"
 import { start } from "./start.js"
+import { stop } from "./stop.js"
 import type { DriveCommand, SendOptions, StartOptions } from "./types.js"
 
 const extracted = extract()
@@ -58,9 +59,14 @@ const describeCommand = Command.make("describe", { name }, (config) =>
     Command.withDescription("Describe a registered OpenCode instance"),
   )
 
+const stopCommand = Command.make("stop", { name }, (config) =>
+  execute(() => stop(Option.getOrUndefined(config.name)))).pipe(
+    Command.withDescription("Stop a registered headless OpenCode instance"),
+  )
+
 const root = Command.make("opencode-drive").pipe(
   Command.withDescription("Drive real and simulated OpenCode instances"),
-  Command.withSubcommands([startCommand, sendCommand, describeCommand]),
+  Command.withSubcommands([startCommand, sendCommand, describeCommand, stopCommand]),
 )
 
 Command.runWith(root, { version: "0.1.0" })(extracted.args).pipe(

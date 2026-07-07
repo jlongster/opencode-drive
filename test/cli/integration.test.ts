@@ -59,7 +59,11 @@ describe("opencode-drive", () => {
     const [duplicateStatus, stderr] = await Promise.all([duplicate.exited, new Response(duplicate.stderr).text()])
     expect(duplicateStatus).toBe(1)
     expect(stderr).toContain('drive instance "default" is already running')
-    process.kill(manifest.pid, "SIGTERM")
+    const stopped = spawn(["stop"], root)
+    const [stopStatus, stopOutput] = await Promise.all([stopped.exited, new Response(stopped.stdout).text()])
+    expect(stopStatus).toBe(0)
+    expect(stopOutput).toBe("success\n")
+    expect(await Bun.file(file).exists()).toBe(false)
   })
 
   test("uses Effect CLI validation for command options", async () => {

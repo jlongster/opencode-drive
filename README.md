@@ -1,7 +1,6 @@
 # opencode-drive
 
-Drive visible, headless, simulated, or real OpenCode instances through a
-publishable Bun CLI and TypeScript SDK.
+Drive visible, headless, simulated, or real OpenCode instances.
 
 ```bash
 bunx opencode-drive start --name demo
