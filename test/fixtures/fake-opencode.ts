@@ -33,11 +33,7 @@ const backend = Bun.serve({
   websocket: {
     message(socket, input) {
       const request = JSON.parse(String(input)) as { readonly id?: number; readonly method: string }
-      const result = request.method === "llm.pending"
-        ? { exchanges: [] }
-        : request.method === "network.log"
-          ? { entries: [] }
-          : { ok: true }
+      const result = request.method === "llm.pending" ? { exchanges: [] } : { ok: true }
       if (request.id !== undefined) socket.send(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }))
     },
   },
@@ -50,14 +46,11 @@ await new Promise<void>((resolve) => {
 await Promise.all([ui.stop(true), backend.stop(true)])
 
 function frontend(method: string, params: unknown) {
-  if (method === "ui.render") return "/tmp/opencode-drive-fake/screenshot.png"
+  if (method === "ui.screenshot") return "/tmp/opencode-drive-fake/screenshot.png"
   if (method === "ui.start-record") return { recording: true }
   if (method === "ui.end-record") return "/tmp/opencode-drive-fake/recording.gif"
-  if (method === "ui.action" && isRecord(params) && isRecord(params.action)) {
-    const action = params.action
-    if (action.type === "typeText" && typeof action.text === "string") screen.value += `\n${action.text}`
-    if (action.type === "pressEnter") screen.value += "\n[enter]"
-  }
+  if (method === "ui.type" && isRecord(params) && typeof params.text === "string") screen.value += `\n${params.text}`
+  if (method === "ui.enter") screen.value += "\n[enter]"
   if (method === "trace.list" || method === "trace.export") return { records: [] }
   if (method === "trace.clear") return { cleared: true }
   return {

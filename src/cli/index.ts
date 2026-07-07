@@ -7,6 +7,8 @@ import { describe } from "./describe.js"
 import { extractCommands } from "./parse.js"
 import { start } from "./start.js"
 import { stop } from "./stop.js"
+import { api } from "./api.js"
+import { restart } from "./restart.js"
 import type { DriveCommand, SendOptions, StartOptions } from "./types.js"
 
 const extracted = extract()
@@ -48,7 +50,7 @@ const sendCommand = Command.make("send", { name, driver }, (config) =>
     Command.withDescription("Connect to an existing drive-enabled OpenCode instance"),
     Command.withExamples([
       {
-        command: "opencode-drive send --name demo --command.type hello --command.press enter --command.render --command.state",
+        command: "opencode-drive send --name demo --command.ui.type '{\"text\":\"hello\"}' --command.ui.state",
         description: "Execute an ordered command batch",
       },
     ]),
@@ -64,9 +66,18 @@ const stopCommand = Command.make("stop", { name }, (config) =>
     Command.withDescription("Stop a registered headless OpenCode instance"),
   )
 
+const restartCommand = Command.make("restart", { name }, (config) =>
+  execute(() => restart(Option.getOrUndefined(config.name)))).pipe(
+    Command.withDescription("Restart a registered OpenCode client"),
+  )
+
+const apiCommand = Command.make("api", {}, () => execute(api)).pipe(
+  Command.withDescription("Print the OpenCode drive protocol"),
+)
+
 const root = Command.make("opencode-drive").pipe(
   Command.withDescription("Drive real and simulated OpenCode instances"),
-  Command.withSubcommands([startCommand, sendCommand, describeCommand, stopCommand]),
+  Command.withSubcommands([startCommand, sendCommand, describeCommand, stopCommand, restartCommand, apiCommand]),
 )
 
 Command.runWith(root, { version: "0.1.0" })(extracted.args).pipe(

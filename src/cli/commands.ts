@@ -1,37 +1,30 @@
-import type { BackendFinishReason, BackendItem, KeyModifiers } from "../client/index.js"
-import { connectBackendSimulation, connectSimulation } from "../client/index.js"
+import { Backend, connectBackendSimulation, connectSimulation, Frontend } from "../client/index.js"
 import type { DriveCommand, InstanceManifest } from "./types.js"
 
-const noValue = new Set([
-  "render",
-  "state",
-  "start-record",
-  "end-record",
-  "enter",
-  "llm.pending",
-  "network.log",
-])
-
-const withValue = new Set([
-  "type",
-  "press",
-  "arrow",
-  "focus",
-  "click",
-  "llm.respond",
-  "llm.chunk",
-  "llm.finish",
-  "llm.disconnect",
-])
+export const commandInfo = {
+  "ui.type": { value: true, description: "Type text using JSON params" },
+  "ui.press": { value: true, description: "Press a key using JSON params" },
+  "ui.enter": { value: false, description: "Press Enter" },
+  "ui.arrow": { value: true, description: "Press an arrow key using JSON params" },
+  "ui.focus": { value: true, description: "Focus an element using JSON params" },
+  "ui.click": { value: true, description: "Click using JSON params" },
+  "ui.screenshot": { value: false, description: "Take a screenshot and return its path" },
+  "ui.state": { value: false, description: "Return focus, elements, and available UI actions" },
+  "ui.start-record": { value: false, description: "Start recording the UI" },
+  "ui.end-record": { value: false, description: "Stop recording and return the recording path" },
+  "llm.pending": { value: false, description: "List pending simulated LLM exchanges" },
+  "llm.chunk": { value: true, description: "Send response items to a simulated LLM exchange" },
+  "llm.finish": { value: true, description: "Finish a simulated LLM exchange" },
+  "llm.disconnect": { value: true, description: "Disconnect a simulated LLM exchange" },
+} as const
 
 export function commandAcceptsValue(operation: string) {
-  if (noValue.has(operation)) return false
-  if (withValue.has(operation)) return true
+  if (operation in commandInfo) return commandInfo[operation as keyof typeof commandInfo].value
   throw new Error(`unknown drive command "${operation}"`)
 }
 
 export function commandNames() {
-  return [...noValue, ...withValue].sort()
+  return Object.keys(commandInfo).sort()
 }
 
 export async function executeCommands(manifest: InstanceManifest, commands: ReadonlyArray<DriveCommand>) {
@@ -72,49 +65,52 @@ async function execute(
   backend: () => Promise<Awaited<ReturnType<typeof connectBackendSimulation>>>,
 ) {
   switch (command.operation) {
-    case "render": return (await ui()).render()
-    case "state": return (await ui()).state()
-    case "start-record": return (await ui()).startRecord()
-    case "end-record": return (await ui()).endRecord()
-    case "type": return (await ui()).typeText(required(command))
-    case "press": {
-      const value = required(command)
-      if (!value.trim().startsWith("{")) return value === "enter" ? (await ui()).pressEnter() : (await ui()).pressKey(value)
-      const input = object(value)
-      return (await ui()).pressKey(string(input, "key"), modifiers(input.modifiers))
+    case "ui.type": {
+      const request = Frontend.decodeRequest({ jsonrpc: "2.0", method: "ui.type", params: json(required(command)) })
+      if (request.method !== "ui.type") throw new Error("invalid ui.type params")
+      return (await ui()).typeText(request.params.text)
     }
-    case "enter": return (await ui()).pressEnter()
-    case "arrow": {
-      const direction = required(command)
-      if (direction !== "up" && direction !== "down" && direction !== "left" && direction !== "right") {
-        throw new Error("arrow must be up, down, left, or right")
-      }
-      return (await ui()).pressArrow(direction)
+    case "ui.press": {
+      const request = Frontend.decodeRequest({ jsonrpc: "2.0", method: "ui.press", params: json(required(command)) })
+      if (request.method !== "ui.press") throw new Error("invalid ui.press params")
+      return (await ui()).pressKey(request.params.key, request.params.modifiers)
     }
-    case "focus": return (await ui()).focus(number(required(command), "target"))
-    case "click": {
-      const input = object(required(command))
-      return (await ui()).click(number(input.target, "target"), number(input.x, "x"), number(input.y, "y"))
+    case "ui.enter": return (await ui()).pressEnter()
+    case "ui.arrow": {
+      const request = Frontend.decodeRequest({ jsonrpc: "2.0", method: "ui.arrow", params: json(required(command)) })
+      if (request.method !== "ui.arrow") throw new Error("invalid ui.arrow params")
+      return (await ui()).pressArrow(request.params.direction)
     }
+    case "ui.focus": {
+      const request = Frontend.decodeRequest({ jsonrpc: "2.0", method: "ui.focus", params: json(required(command)) })
+      if (request.method !== "ui.focus") throw new Error("invalid ui.focus params")
+      return (await ui()).focus(request.params.target)
+    }
+    case "ui.click": {
+      const request = Frontend.decodeRequest({ jsonrpc: "2.0", method: "ui.click", params: json(required(command)) })
+      if (request.method !== "ui.click") throw new Error("invalid ui.click params")
+      return (await ui()).click(request.params.target, request.params.x, request.params.y)
+    }
+    case "ui.screenshot": return (await ui()).screenshot()
+    case "ui.state": return (await ui()).state()
+    case "ui.start-record": return (await ui()).startRecord()
+    case "ui.end-record": return (await ui()).endRecord()
     case "llm.pending": return (await backend()).pendingExchanges()
-    case "llm.respond": {
-      const input = object(required(command))
-      const client = await backend()
-      const chunk = await client.chunk(string(input, "id"), [{ type: "textDelta", text: string(input, "text") }])
-      const finish = await client.finish(string(input, "id"), finishReason(input.reason))
-      return { chunk, finish }
-    }
     case "llm.chunk": {
-      const input = object(required(command))
-      if (!Array.isArray(input.items)) throw new Error("llm.chunk items must be an array")
-      return (await backend()).chunk(string(input, "id"), input.items as ReadonlyArray<BackendItem>)
+      const request = Backend.decodeRequest({ jsonrpc: "2.0", method: "llm.chunk", params: json(required(command)) })
+      if (request.method !== "llm.chunk") throw new Error("invalid llm.chunk params")
+      return (await backend()).chunk(request.params.id, request.params.items)
     }
     case "llm.finish": {
-      const input = scalarOrObject(required(command), "id")
-      return (await backend()).finish(string(input, "id"), finishReason(input.reason))
+      const request = Backend.decodeRequest({ jsonrpc: "2.0", method: "llm.finish", params: json(required(command)) })
+      if (request.method !== "llm.finish") throw new Error("invalid llm.finish params")
+      return (await backend()).finish(request.params.id, request.params.reason)
     }
-    case "llm.disconnect": return (await backend()).disconnect(required(command))
-    case "network.log": return (await backend()).networkLog()
+    case "llm.disconnect": {
+      const request = Backend.decodeRequest({ jsonrpc: "2.0", method: "llm.disconnect", params: json(required(command)) })
+      if (request.method !== "llm.disconnect") throw new Error("invalid llm.disconnect params")
+      return (await backend()).disconnect(request.params.id)
+    }
   }
   throw new Error(`unknown drive command "${command.operation}"`)
 }
@@ -124,52 +120,6 @@ function required(command: DriveCommand) {
   return command.value
 }
 
-function object(value: string) {
-  const parsed: unknown = JSON.parse(value)
-  if (!isRecord(parsed)) throw new Error("command value must be a JSON object")
-  return parsed
-}
-
-function scalarOrObject(value: string, key: string) {
-  return value.trim().startsWith("{") ? object(value) : { [key]: value }
-}
-
-function string(input: Record<string, unknown>, key: string) {
-  const value = input[key]
-  if (typeof value !== "string") throw new Error(`${key} must be a string`)
-  return value
-}
-
-function number(value: unknown, name: string) {
-  const parsed = typeof value === "number" ? value : Number(value)
-  if (!Number.isFinite(parsed)) throw new Error(`${name} must be a number`)
-  return parsed
-}
-
-function modifiers(value: unknown): KeyModifiers | undefined {
-  if (value === undefined) return undefined
-  if (!isRecord(value)) throw new Error("modifiers must be an object")
-  return {
-    ctrl: optionalBoolean(value.ctrl, "ctrl"),
-    shift: optionalBoolean(value.shift, "shift"),
-    meta: optionalBoolean(value.meta, "meta"),
-    super: optionalBoolean(value.super, "super"),
-    hyper: optionalBoolean(value.hyper, "hyper"),
-  }
-}
-
-function finishReason(value: unknown): BackendFinishReason | undefined {
-  if (value === undefined) return undefined
-  if (value === "stop" || value === "tool-calls" || value === "length" || value === "content-filter") return value
-  throw new Error("reason must be stop, tool-calls, length, or content-filter")
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
-function optionalBoolean(value: unknown, name: string) {
-  if (value === undefined) return undefined
-  if (typeof value !== "boolean") throw new Error(`${name} must be a boolean`)
-  return value
+function json(value: string): unknown {
+  return JSON.parse(value)
 }

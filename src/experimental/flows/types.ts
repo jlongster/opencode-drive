@@ -41,7 +41,6 @@ export interface FlowResult {
   readonly assistantExchanges: number
   readonly subagentExchanges: number
   readonly titleExchanges: number
-  readonly traceRecords: number
   readonly durationMs: number
   readonly finalState: UiState
 }

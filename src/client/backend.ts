@@ -11,7 +11,6 @@ type BackendMethods = {
   readonly "llm.finish": { readonly params: Partial<Backend.FinishParams> & Pick<Backend.FinishParams, "id">; readonly result: { readonly ok: true } }
   readonly "llm.disconnect": { readonly params: Backend.DisconnectParams; readonly result: { readonly ok: true } }
   readonly "llm.pending": { readonly params: undefined; readonly result: { readonly exchanges: ReadonlyArray<Backend.OpenedExchange> } }
-  readonly "network.log": { readonly params: undefined; readonly result: { readonly entries: ReadonlyArray<Backend.NetworkLogEntry> } }
 }
 
 type BackendMethodName = keyof BackendMethods
@@ -108,10 +107,6 @@ export class BackendSimulationClient {
 
   pendingExchanges() {
     return this.call("llm.pending")
-  }
-
-  networkLog(): Promise<{ readonly entries: ReadonlyArray<Backend.NetworkLogEntry> }> {
-    return this.call("network.log")
   }
 
   close() {

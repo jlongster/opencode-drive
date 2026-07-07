@@ -38,7 +38,7 @@ const child = Bun.spawn([
   "--driver", `bun ${path.resolve("src/experimental/stale-running-driver.ts")}`,
   "--",
   "bun", "run", "--conditions=browser", "--preload=@opentui/solid/preload",
-  "/root/projects/opencode-latest/packages/cli/src/index.ts", "--standalone",
+  "/root/projects/opencode-latest/packages/cli/src/index.ts",
 ], {
   cwd: path.resolve("."),
   env: {

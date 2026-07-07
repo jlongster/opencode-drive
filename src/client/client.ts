@@ -6,14 +6,16 @@ import {
 const defaultPort = 40900
 
 type Methods = {
-  readonly "ui.render": { readonly params: undefined; readonly result: Frontend.Render }
+  readonly "ui.screenshot": { readonly params: undefined; readonly result: Frontend.Screenshot }
   readonly "ui.state": { readonly params: undefined; readonly result: Frontend.State }
   readonly "ui.start-record": { readonly params: undefined; readonly result: Frontend.StartRecord }
   readonly "ui.end-record": { readonly params: undefined; readonly result: Frontend.EndRecord }
-  readonly "ui.action": { readonly params: Frontend.ActionParams; readonly result: Frontend.State }
-  readonly "trace.list": { readonly params: undefined; readonly result: Frontend.TraceList }
-  readonly "trace.clear": { readonly params: undefined; readonly result: { readonly cleared: true } }
-  readonly "trace.export": { readonly params: undefined; readonly result: Frontend.TraceList }
+  readonly "ui.type": { readonly params: Frontend.TypeParams; readonly result: Frontend.State }
+  readonly "ui.press": { readonly params: Frontend.PressParams; readonly result: Frontend.State }
+  readonly "ui.enter": { readonly params: undefined; readonly result: Frontend.State }
+  readonly "ui.arrow": { readonly params: Frontend.ArrowParams; readonly result: Frontend.State }
+  readonly "ui.focus": { readonly params: Frontend.FocusParams; readonly result: Frontend.State }
+  readonly "ui.click": { readonly params: Frontend.ClickParams; readonly result: Frontend.State }
 }
 
 type MethodName = keyof Methods
@@ -123,8 +125,8 @@ export class SimulationClient {
     return this.call("ui.state")
   }
 
-  render(): Promise<Frontend.Render> {
-    return this.call("ui.render")
+  screenshot(): Promise<Frontend.Screenshot> {
+    return this.call("ui.screenshot")
   }
 
   startRecord(): Promise<Frontend.StartRecord> {
@@ -136,46 +138,28 @@ export class SimulationClient {
   }
 
   /** Executes one user-level action and returns the post-action state. */
-  action(action: Frontend.Action): Promise<Frontend.State> {
-    return this.call("ui.action", { action })
-  }
-
   typeText(text: string): Promise<Frontend.State> {
-    return this.action({ type: "typeText", text })
+    return this.call("ui.type", { text })
   }
 
   pressKey(key: string, modifiers?: Frontend.KeyModifiers): Promise<Frontend.State> {
-    return this.action({ type: "pressKey", key: key === "escape" ? "\u001b" : key, ...(modifiers === undefined ? {} : { modifiers }) })
+    return this.call("ui.press", { key: key === "escape" ? "\u001b" : key, ...(modifiers === undefined ? {} : { modifiers }) })
   }
 
   pressEnter(): Promise<Frontend.State> {
-    return this.action({ type: "pressEnter" })
+    return this.call("ui.enter")
   }
 
   pressArrow(direction: "up" | "down" | "left" | "right"): Promise<Frontend.State> {
-    return this.action({ type: "pressArrow", direction })
+    return this.call("ui.arrow", { direction })
   }
 
   focus(target: number): Promise<Frontend.State> {
-    return this.action({ type: "focus", target })
+    return this.call("ui.focus", { target })
   }
 
   click(target: number, x: number, y: number): Promise<Frontend.State> {
-    return this.action({ type: "click", target, x, y })
-  }
-
-  // ── trace ─────────────────────────────────────────────────────────────
-
-  traceList(): Promise<Frontend.TraceList> {
-    return this.call("trace.list")
-  }
-
-  traceClear(): Promise<{ readonly cleared: true }> {
-    return this.call("trace.clear")
-  }
-
-  traceExport(): Promise<Frontend.TraceList> {
-    return this.call("trace.export")
+    return this.call("ui.click", { target, x, y })
   }
 
   // ── lifecycle ─────────────────────────────────────────────────────────

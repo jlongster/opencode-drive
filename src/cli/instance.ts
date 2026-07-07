@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises"
+import { chmod, mkdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { registerInstance, registryDirectory, transferInstance, unregisterInstance } from "./registry.js"
@@ -89,6 +89,7 @@ export async function launchInstance(options: LaunchOptions = {}) {
     OPENCODE_DRIVE_RENDERER: options.visible ? "visible" : "headless",
     OPENCODE_CONFIG_DIR: join(cwd, ".opencode"),
     OPENCODE_DB: ":memory:",
+    OPENCODE_TEST_HOME: artifacts,
     XDG_CACHE_HOME: join(artifacts, "home", ".cache"),
     XDG_CONFIG_HOME: join(artifacts, "home", ".config"),
     XDG_DATA_HOME: join(artifacts, "home", ".local", "share"),
@@ -98,19 +99,22 @@ export async function launchInstance(options: LaunchOptions = {}) {
     ? await prepareDev(cwd, options.dev)
     : options.command?.length
       ? [...options.command]
-      : ["opencode2", "--standalone"]
+      : ["opencode2"]
+  const launch = join(artifacts, "launch.json")
+  await Bun.write(launch, `${JSON.stringify({ command, environment }, undefined, 2)}\n`)
+  await chmod(launch, 0o600)
   const visible = options.visible === true
-  const child = Bun.spawn(command, {
-    cwd,
-    env: environment,
-    stdin: visible ? "inherit" : "ignore",
-    stdout: visible ? "inherit" : Bun.file(join(artifacts, "opencode.stdout.log")),
-    stderr: visible ? "inherit" : Bun.file(join(artifacts, "opencode.stderr.log")),
-  })
-  const lifecycle = { detached: false, stopping: undefined as Promise<void> | undefined }
+  let child = spawn(command, environment, manifest)
+  const lifecycle = {
+    detached: false,
+    stopping: undefined as Promise<void> | undefined,
+    restarting: undefined as Promise<void> | undefined,
+  }
   return {
     manifest,
-    child,
+    get child() {
+      return child
+    },
     async waitForDrive(requirement: "ui" | "backend" | "both" = "both", timeout = 60_000) {
       const urls = requirement === "both"
         ? [endpoints.ui, endpoints.backend]
@@ -122,10 +126,37 @@ export async function launchInstance(options: LaunchOptions = {}) {
       child.unref()
       lifecycle.detached = true
     },
+    restart() {
+      if (lifecycle.restarting) return lifecycle.restarting
+      lifecycle.restarting = (async () => {
+        await terminate(child)
+        child = spawn(command, environment, manifest)
+        await Promise.all([
+          waitForWebSocket(endpoints.ui, child.exited, 60_000),
+          waitForWebSocket(endpoints.backend, child.exited, 60_000),
+        ])
+      })().finally(() => {
+        lifecycle.restarting = undefined
+      })
+      return lifecycle.restarting
+    },
+    async wait() {
+      while (true) {
+        const current = child
+        const status = await current.exited
+        if (lifecycle.restarting) {
+          await lifecycle.restarting
+          continue
+        }
+        if (child !== current) continue
+        return status
+      }
+    },
     stop(force = false) {
       if (lifecycle.detached) return Promise.resolve()
       if (lifecycle.stopping) return lifecycle.stopping
       lifecycle.stopping = (async () => {
+        if (lifecycle.restarting) await lifecycle.restarting.catch(() => undefined)
         if (force) {
           if (child.exitCode === null) child.kill("SIGKILL")
         } else if (child.exitCode === null) {
@@ -139,6 +170,53 @@ export async function launchInstance(options: LaunchOptions = {}) {
       return lifecycle.stopping
     },
   }
+}
+
+async function terminate(child: Bun.Subprocess) {
+  if (child.exitCode !== null) return
+  child.kill("SIGTERM")
+  await Promise.race([child.exited, Bun.sleep(1_000)])
+  if (child.exitCode === null) child.kill("SIGKILL")
+  await child.exited
+}
+
+export async function restartInstance(manifest: InstanceManifest) {
+  const value: unknown = await Bun.file(join(manifest.artifacts, "launch.json")).json()
+  if (!isLaunchInfo(value)) throw new Error(`drive instance "${manifest.name}" has no valid restart metadata`)
+  const child = spawn(value.command, value.environment, manifest)
+  await transferInstance(manifest, child.pid)
+  try {
+    await Promise.all([
+      waitForWebSocket(manifest.endpoints.ui, child.exited, 60_000),
+      waitForWebSocket(manifest.endpoints.backend, child.exited, 60_000),
+    ])
+    child.unref()
+    return child.pid
+  } catch (error) {
+    if (child.exitCode === null) child.kill("SIGKILL")
+    await child.exited
+    throw error
+  }
+}
+
+function spawn(command: ReadonlyArray<string>, environment: Readonly<Record<string, string>>, manifest: InstanceManifest) {
+  return Bun.spawn([...command], {
+    cwd: manifest.cwd,
+    env: environment,
+    stdin: manifest.headless ? "ignore" : "inherit",
+    stdout: manifest.headless ? Bun.file(join(manifest.artifacts, "opencode.stdout.log")) : "inherit",
+    stderr: manifest.headless ? Bun.file(join(manifest.artifacts, "opencode.stderr.log")) : "inherit",
+  })
+}
+
+function isLaunchInfo(value: unknown): value is {
+  readonly command: ReadonlyArray<string>
+  readonly environment: Readonly<Record<string, string>>
+} {
+  if (typeof value !== "object" || value === null) return false
+  if (!("command" in value) || !Array.isArray(value.command) || !value.command.every((item) => typeof item === "string")) return false
+  if (!("environment" in value) || typeof value.environment !== "object" || value.environment === null || Array.isArray(value.environment)) return false
+  return Object.values(value.environment).every((item) => typeof item === "string")
 }
 
 async function prepareDev(cwd: string, directory: string) {
@@ -168,7 +246,6 @@ async function prepareDev(cwd: string, directory: string) {
     "--conditions=browser",
     "--preload=@opentui/solid/preload",
     entrypoint,
-    "--standalone",
   ]
 }
 

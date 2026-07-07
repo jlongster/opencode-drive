@@ -2,89 +2,99 @@
 
 Drive visible, headless, simulated, or real OpenCode instances.
 
+# Usage
+
+**Start the default detached, headless instance:**
+
+```bash
+bunx opencode-drive start
+```
+
+**Start a named instance, then address it with `--name`:**
+
 ```bash
 bunx opencode-drive start --name demo
+```
 
+**Type, submit a prompt, and take a screenshot:**
+
+```bash
 bunx opencode-drive send --name demo \
-  --command.type "hello" \
-  --command.press enter \
-  --command.render \
-  --command.state
+  --command.type "Explain this project in one sentence" \
+  --command.enter \
+  --command.screenshot
 ```
 
-`start` launches a detached headless simulated OpenCode process. Add
-`--visible` to keep it in the foreground and show it in the terminal. Pass a custom OpenCode command after
-`--`:
+**List the full command API for agents:**
 
 ```bash
-bunx opencode-drive start --name local --visible -- \
-  opencode2 --standalone
+bunx opencode-drive api
 ```
 
-Use `--dev` to run an OpenCode development checkout. The launcher installs the
-checkout's `@opentui/solid` runtime in its isolated working directory and configures
-Bun automatically:
+**Run OpenCode visibly in the foreground:**
 
 ```bash
-bunx opencode-drive start --visible --dev ~/projects/opencode-latest
+bunx opencode-drive start --visible
 ```
 
-Both `start` and `send` accept `--driver ./driver.ts`. Drivers may default
-export a function created with `defineDriver`:
-
-```ts
-import { defineDriver } from "opencode-drive/experimental"
-
-export default defineDriver(async ({ ui }) => {
-  await ui.typeText("hello")
-  await ui.pressEnter()
-  const state = await ui.state()
-  if (!state.focused.editor) throw new Error("prompt editor is not focused")
-})
-```
-
-Experimental campaign modules use `defineCampaign` from `opencode-drive/experimental`. Every case gets a fresh isolated,
-headless OpenCode process. One deterministic case can use the same runner in a
-visible terminal:
+**Run a local OpenCode development checkout:**
 
 ```bash
-bunx opencode-drive start --campaign ./campaign.ts --seed 42000
-bunx opencode-drive start --campaign ./campaign.ts --seed 42000 --case 17 --visible
+cd ~/projects/opencode
+bunx opencode-drive start --visible --dev .
 ```
 
-OpenCode starts its drive interfaces when `OPENCODE_DRIVE` contains an instance
-name and its simulated services when `OPENCODE_SIMULATE=1`. `run` creates the
-named registry manifest, then sets both variables. OpenCode resolves the
-manifest by name to obtain its drive ports. The manifest has this contract:
-
-```json
-{
-  "version": 1,
-  "name": "demo",
-  "pid": 1234,
-  "startedAt": "2026-07-06T00:00:00.000Z",
-  "mode": "simulated",
-  "cwd": "/workspace",
-  "artifacts": "/tmp/opencode-drive/demo",
-  "endpoints": {
-    "ui": "ws://127.0.0.1:41000",
-    "backend": "ws://127.0.0.1:41001"
-  }
-}
-```
-
-## Probe Experiments
-
-Model-based and deterministic simulation drivers for the local opencode V2 TUI
-and server. The probe controls the real application through simulation-only
-WebSocket interfaces while external model and filesystem state remain isolated.
-
-The opencode checkout is expected at `~/projects/opencode-latest`.
-
-## Setup
+**Run a custom OpenCode command after `--`:**
 
 ```bash
-cd ~/projects/opencode-drive
-bun install
-bun run check
+bunx opencode-drive start --name demo -- opencode2 --standalone
 ```
+
+**Stop a detached headless instance:**
+
+```bash
+bunx opencode-drive stop --name demo
+```
+
+# Use cases
+
+There are two different modes OpenCode can run in:
+
+* Simulated: core layers like networking are swapped out in the backend so you can control them
+* Driven: starts websocket servers internally to expose commands to drive the app
+
+You can choose one or the other, or both! This allows the following use cases:
+
+1. You want to develop opencode
+
+You are running a development version of OpenCode to work on it. You have another OpenCode instance making changes to the app.
+
+In this case, you don't care about simulation. But you still want OpenCode to see and drive your development version! This _closes the loop_ and gives direct feedback to AI.
+
+To do this, run it with a development version of OpenCode with `--dev` (takes the path to the code) and `--visible` (so you can see it):
+
+```sh
+bunx opencode-drive start --dev . --visible
+```
+
+If you are doing UI work, you can use the `restart` command to refresh the UI. The server will still be running in the background so this only restarts the UI:
+
+```sh
+bunx opencode-drive restart
+```
+
+If you want to restart the backend, use the `/reload` command.
+
+2. You want opencode to develop itself
+
+OpenCode can spawn it's own instances of OpenCode in headless mode. Use the skill in this repo to teach it about it.
+
+It will spawn it in both drive and simulated mode, allowing it explore the app. It will use the `screenshot` command to capture screenshots to see what's happening, providing a full feedback loop.
+
+3. You want to share reproducible steps
+
+Ask opencode to find a bug, and list the commands it used to get there. You can then share this list with someone else who can use `opencode-drive` in visible mode to visually inspect it and develop a fix. (Or just share the steps with your own local OpenCode to find a fix)
+
+4. You want to run it a billion times and assert properties
+
+This isn't fully implemented right now, but in the future `opencode-drive` will provide a way to specify properties that you want to assert, and run the app a billion times in many different states to make sure those properties hold. This will work with a new CLI command that takes different flags.

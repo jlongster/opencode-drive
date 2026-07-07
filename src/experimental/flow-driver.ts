@@ -100,7 +100,6 @@ try {
     if (stepDelay > 0) await Bun.sleep(stepDelay)
   }
   await waitFor("provider idle", async () => (await backend.pendingExchanges()).exchanges.length === 0)
-  const trace = await ui.traceExport()
   const result: FlowResult = {
     seed: scenario.seed,
     name: scenario.name,
@@ -108,7 +107,6 @@ try {
     assistantExchanges,
     subagentExchanges,
     titleExchanges,
-    traceRecords: trace.records.length,
     durationMs: Date.now() - started,
     finalState: await ui.state(),
   }

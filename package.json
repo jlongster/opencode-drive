@@ -1,13 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "opencode-drive",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Drive real and simulated OpenCode instances",
   "license": "MIT",
   "type": "module",
   "packageManager": "bun@1.3.14",
   "bin": {
-    "opencode-drive": "./bin/opencode-drive"
+    "opencode-drive": "bin/opencode-drive"
   },
   "exports": {
     ".": "./src/index.ts",

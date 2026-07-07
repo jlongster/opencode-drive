@@ -83,7 +83,7 @@ for (let index = 0; index < options.count; index++) {
     "--driver", `bun ${path.resolve("src/experimental/flow-driver.ts")} ${path.join(directory, "scenario.json")} ${path.join(directory, "result.json")}`,
     "--",
     "bun", "run", "--conditions=browser", "--preload=@opentui/solid/preload",
-    "/root/projects/opencode-latest/packages/cli/src/index.ts", "--standalone",
+    "/root/projects/opencode-latest/packages/cli/src/index.ts",
   ], {
     cwd: path.resolve("."),
     env: {
@@ -107,7 +107,7 @@ for (let index = 0; index < options.count; index++) {
   }
   const result: FlowResult = await Bun.file(path.join(directory, "result.json")).json()
   results.push(result)
-  console.log(`  passed in ${result.durationMs}ms; trace=${result.traceRecords} title=${result.titleExchanges}`)
+  console.log(`  passed in ${result.durationMs}ms; title=${result.titleExchanges}`)
 }
 
 const summary = {
@@ -117,7 +117,6 @@ const summary = {
   assistantExchanges: results.reduce((total, result) => total + result.assistantExchanges, 0),
   subagentExchanges: results.reduce((total, result) => total + result.subagentExchanges, 0),
   titleExchanges: results.reduce((total, result) => total + result.titleExchanges, 0),
-  traceRecords: results.reduce((total, result) => total + result.traceRecords, 0),
   durationMs: results.reduce((total, result) => total + result.durationMs, 0),
   coverage: { ...coverage, streamChunkTypes: [...coverage.streamChunkTypes] },
 }
