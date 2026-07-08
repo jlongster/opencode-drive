@@ -1,79 +1,56 @@
 import { rm } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 import { connect, createServer } from "node:net"
 
-const socketPath = join(
-  process.env.XDG_RUNTIME_DIR ?? tmpdir(),
-  "opencode-drive.sock",
-)
-
-export async function listenControl(onRestart: () => Promise<void>) {
+export async function listenControl(
+  path: string,
+  handlers: {
+    readonly restart: () => Promise<void>
+    readonly stop: () => Promise<void>
+  },
+) {
   const server = createServer((socket) => {
     socket.setEncoding("utf8")
     socket.once("data", (data) => {
-      if (String(data).trim() !== "restart") {
-        socket.destroy()
-        return
-      }
+      const command = String(data).trim()
+      const handler =
+        command === "restart"
+          ? handlers.restart
+          : command === "stop"
+            ? handlers.stop
+            : undefined
       socket.destroy()
-      void onRestart().catch((error) => {
+      if (!handler) return
+      void handler().catch((error) => {
         console.error(
           `error: ${error instanceof Error ? error.message : String(error)}`,
         )
       })
     })
   })
-  await listen(server)
+  await listen(server, path)
   return async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()))
-    await rm(socketPath, { force: true })
+    await rm(path, { force: true })
   }
 }
 
-export function requestRestart() {
+export function request(path: string, command: "restart" | "stop") {
   return new Promise<void>((resolve, reject) => {
-    const socket = connect(socketPath)
-    socket.on("connect", () => {
-      socket.end("restart\n", resolve)
-    })
+    const socket = connect(path)
+    socket.on("connect", () => socket.end(`${command}\n`, resolve))
     socket.on("error", () =>
-      reject(new Error("no running opencode-drive instance")),
+      reject(new Error("instance control socket is unavailable")),
     )
   })
 }
 
-async function listen(server: ReturnType<typeof createServer>) {
-  const attempt = () =>
-    new Promise<void>((resolve, reject) => {
-      server.once("error", reject)
-      server.listen(socketPath, () => {
-        server.off("error", reject)
-        resolve()
-      })
+async function listen(server: ReturnType<typeof createServer>, path: string) {
+  await rm(path, { force: true })
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject)
+    server.listen(path, () => {
+      server.off("error", reject)
+      resolve()
     })
-  try {
-    await attempt()
-  } catch (error) {
-    if (!isAddressInUse(error) || (await active())) throw error
-    await rm(socketPath, { force: true })
-    await attempt()
-  }
-}
-
-function active() {
-  return new Promise<boolean>((resolve) => {
-    const socket = connect(socketPath)
-    socket.once("connect", () => {
-      socket.destroy()
-      resolve(true)
-    })
-    socket.once("error", () => resolve(false))
   })
-}
-
-function isAddressInUse(error: unknown): error is NodeJS.ErrnoException {
-  return (
-    error instanceof Error && "code" in error && error.code === "EADDRINUSE"
-  )
 }

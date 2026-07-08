@@ -1,6 +1,10 @@
 const screen = { value: "Fake OpenCode" }
 const endpoints = await resolveEndpoints()
 if (process.env.OPENCODE_TEST_HOME) {
+  await Bun.write(
+    `${process.env.OPENCODE_TEST_HOME}/child.pid`,
+    String(process.pid),
+  )
   const launches = `${process.env.OPENCODE_TEST_HOME}/launches.txt`
   await Bun.write(
     launches,

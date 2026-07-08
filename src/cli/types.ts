@@ -5,6 +5,8 @@ export interface DriveCommand {
 
 export interface StartOptions {
   readonly kind: "start"
+  readonly name: string
+  readonly daemon: boolean
   readonly script?: string
   readonly visible: boolean
   readonly dev?: string
@@ -14,6 +16,7 @@ export interface StartOptions {
 
 export interface SendOptions {
   readonly kind: "send"
+  readonly name: string
   readonly commands: ReadonlyArray<DriveCommand>
 }
 

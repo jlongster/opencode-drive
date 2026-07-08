@@ -159,7 +159,7 @@ export class BackendSimulationClient {
 
   close() {
     this.closing = true
-    this.socket.close()
+    this.socket.terminate()
   }
 
   private onMessage(data: string) {

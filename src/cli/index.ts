@@ -7,13 +7,23 @@ import { extractCommands } from "./parse.js"
 import { send } from "./send.js"
 import { start } from "./start.js"
 import { restart } from "./restart.js"
+import { stop } from "./stop.js"
+import { describe } from "./describe.js"
 import type { DriveCommand, SendOptions, StartOptions } from "./types.js"
 
 const extracted = extract()
+const name = Flag.string("name").pipe(
+  Flag.withDefault("default"),
+  Flag.withDescription("Instance name"),
+)
 
 const startCommand = Command.make(
   "start",
   {
+    name,
+    daemon: Flag.boolean("daemon").pipe(
+      Flag.withDescription("Run as detached instance owner"),
+    ),
     script: Flag.string("script").pipe(
       Flag.optional,
       Flag.withDescription("JavaScript or TypeScript automation module"),
@@ -52,8 +62,10 @@ const startCommand = Command.make(
   ]),
 )
 
-const sendCommand = Command.make("send", {}, () =>
-  execute(() => send(toSendOptions(extracted.commands, extracted.app))),
+const sendCommand = Command.make("send", { name }, (config) =>
+  execute(() =>
+    send(toSendOptions(config.name, extracted.commands, extracted.app)),
+  ),
 ).pipe(
   Command.withDescription("Send UI commands to OpenCode on the default port"),
   Command.withExamples([
@@ -69,18 +81,30 @@ const apiCommand = Command.make("api", {}, () => execute(api)).pipe(
   Command.withDescription("Print the OpenCode drive UI protocol"),
 )
 
-const restartCommand = Command.make("restart", {}, () => execute(restart)).pipe(
+const restartCommand = Command.make("restart", { name }, (config) =>
+  execute(() => restart(config.name)),
+).pipe(
   Command.withDescription(
-    "Restart the active visible OpenCode instance and rerun its script",
+    "Restart a named OpenCode instance and rerun its script",
   ),
 )
+
+const stopCommand = Command.make("stop", { name }, (config) =>
+  execute(() => stop(config.name)),
+).pipe(Command.withDescription("Stop a named OpenCode instance"))
+
+const describeCommand = Command.make("describe", { name }, (config) =>
+  execute(() => describe(config.name)),
+).pipe(Command.withDescription("Describe a named OpenCode instance"))
 
 const root = Command.make("opencode-drive").pipe(
   Command.withDescription("Drive real and simulated OpenCode instances"),
   Command.withSubcommands([
     startCommand,
     sendCommand,
+    describeCommand,
     restartCommand,
+    stopCommand,
     apiCommand,
   ]),
 )
@@ -93,6 +117,8 @@ Command.runWith(root, { version: "0.1.0" })(extracted.args).pipe(
 function toStartOptions(
   config: {
     readonly script: Option.Option<string>
+    readonly name: string
+    readonly daemon: boolean
     readonly visible: boolean
     readonly dev: Option.Option<string>
     readonly state: Option.Option<string>
@@ -104,6 +130,8 @@ function toStartOptions(
     throw new Error("start does not accept command flags; use send or --script")
   const options = {
     kind: "start" as const,
+    name: config.name,
+    daemon: config.daemon,
     script: Option.getOrUndefined(config.script),
     visible: config.visible,
     dev: Option.getOrUndefined(config.dev),
@@ -116,11 +144,12 @@ function toStartOptions(
 }
 
 function toSendOptions(
+  name: string,
   commands: ReadonlyArray<DriveCommand>,
   app: ReadonlyArray<string>,
 ): SendOptions {
   if (app.length > 0) throw new Error("send does not accept a command after --")
-  return { kind: "send", commands }
+  return { kind: "send", name, commands }
 }
 
 function execute(task: () => Promise<void>) {

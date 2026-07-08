@@ -5,13 +5,11 @@ This project gives your agents control over OpenCode:
 * Run it during development and let your agents see and poke at the running instance
 * Allow your agents to run it in headless mode and drive it to test things
 
-
 ## Skill
 
 ```sh
 npx skills add jlongster/opencode-drive --agent opencode --skill opencode-drive
 ```
-
 ## OpenCode development
 
 Run this:

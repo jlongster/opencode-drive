@@ -1,9 +1,9 @@
 import { mkdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { defaultBackendPort, defaultPort } from "../client/index.js"
 
 export interface LaunchOptions {
+  readonly name: string
   readonly command?: ReadonlyArray<string>
   readonly dev?: string
   readonly state?: string
@@ -12,20 +12,15 @@ export interface LaunchOptions {
   readonly env?: Readonly<Record<string, string>>
 }
 
-export async function launchInstance(options: LaunchOptions = {}) {
+export async function launchInstance(options: LaunchOptions) {
   const artifacts = resolve(
     join(tmpdir(), "opencode-drive", `run-${crypto.randomUUID().slice(0, 6)}`),
   )
   const logs = join(artifacts, "logs")
-  const endpoints = options.scripted
-    ? {
-        ui: `ws://127.0.0.1:${await freePort()}`,
-        backend: `ws://127.0.0.1:${await freePort()}`,
-      }
-    : {
-        ui: `ws://127.0.0.1:${defaultPort}`,
-        backend: `ws://127.0.0.1:${defaultBackendPort}`,
-      }
+  const endpoints = {
+    ui: `ws://127.0.0.1:${await freePort()}`,
+    backend: `ws://127.0.0.1:${await freePort()}`,
+  }
   const drive = join(artifacts, "drive")
   await Promise.all([
     mkdir(logs, { recursive: true }),
@@ -35,13 +30,10 @@ export async function launchInstance(options: LaunchOptions = {}) {
     mkdir(join(artifacts, "home", ".local", "share"), { recursive: true }),
     mkdir(join(artifacts, "home", ".local", "state"), { recursive: true }),
   ])
-  const name = `script-${crypto.randomUUID().slice(0, 6)}`
-  if (options.scripted) {
-    await Bun.write(
-      join(drive, `${name}.json`),
-      `${JSON.stringify({ endpoints }, undefined, 2)}\n`,
-    )
-  }
+  await Bun.write(
+    join(drive, `${options.name}.json`),
+    `${JSON.stringify({ endpoints }, undefined, 2)}\n`,
+  )
   const state = options.state
     ? resolve(options.state)
     : join(artifacts, "state")
@@ -88,7 +80,7 @@ export async function launchInstance(options: LaunchOptions = {}) {
     OPENCODE_SIMULATE: "1",
     OPENCODE_SIMULATE_STATE: state,
     DRIVE_REGISTRY_DIR: drive,
-    OPENCODE_DRIVE: options.scripted ? name : "1",
+    OPENCODE_DRIVE: options.name,
     OPENCODE_DRIVE_RENDERER: options.visible ? "visible" : "headless",
     OPENCODE_CONFIG_DIR: join(artifacts, ".opencode"),
     OPENCODE_DB: ":memory:",
@@ -311,7 +303,7 @@ async function waitForWebSocket(
     const connected = await Promise.race([
       open(url)
         .then((socket) => {
-          socket.close()
+          socket.terminate()
           return true
         })
         .catch(() => false),

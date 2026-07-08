@@ -44,6 +44,7 @@ export async function runScript(
   }
   signal.addEventListener("abort", abort, { once: true })
   try {
+    await waitForEditor(ui, signal)
     await Promise.race([
       script({ ui, backend, artifacts, signal }),
       new Promise<never>((_resolve, reject) => {
@@ -59,6 +60,16 @@ export async function runScript(
     ui.close()
     backend.close()
   }
+}
+
+async function waitForEditor(ui: SimulationClient, signal: AbortSignal) {
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    signal.throwIfAborted()
+    if ((await ui.state()).focused.editor) return
+    await Bun.sleep(50)
+  }
+  throw new Error("timed out waiting for the prompt editor")
 }
 
 function isDriveScript(value: unknown): value is DriveScript {

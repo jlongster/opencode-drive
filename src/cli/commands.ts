@@ -1,4 +1,4 @@
-import { connectSimulation, defaultPort, Frontend } from "../client/index.js"
+import { connectSimulation, Frontend } from "../client/index.js"
 import type { DriveCommand } from "./types.js"
 
 export const commandInfo = {
@@ -47,8 +47,11 @@ export function commandNames() {
   return Object.keys(commandInfo).sort()
 }
 
-export async function executeCommands(commands: ReadonlyArray<DriveCommand>) {
-  const ui = await connectSimulation({ port: defaultPort, portAttempts: 1 })
+export async function executeCommands(
+  endpoint: string,
+  commands: ReadonlyArray<DriveCommand>,
+) {
+  const ui = await connectSimulation({ url: endpoint })
   const results: Array<{ readonly command: string; readonly result: unknown }> =
     []
   try {

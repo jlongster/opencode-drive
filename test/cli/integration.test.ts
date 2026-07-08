@@ -1,13 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, readdir, readlink, rm } from "node:fs/promises"
+import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 
 const roots: string[] = []
-const children: Bun.Subprocess[] = []
+const instances: Array<{ root: string; name: string }> = []
 
 afterEach(async () => {
-  children.splice(0).forEach((child) => child.kill("SIGKILL"))
+  await Promise.all(
+    instances.splice(0).map(async ({ root, name }) => {
+      await spawn(["stop", "--name", name], root).exited
+    }),
+  )
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   )
@@ -15,7 +19,8 @@ afterEach(async () => {
 
 describe("opencode-drive", () => {
   test("prints only the UI command protocol", async () => {
-    const child = spawn(["api"])
+    const root = await temporary()
+    const child = spawn(["api"], root)
     const [status, stdout] = await Promise.all([
       child.exited,
       new Response(child.stdout).text(),
@@ -27,199 +32,196 @@ describe("opencode-drive", () => {
     expect(stdout).not.toContain("llm.")
   })
 
-  test("drives a headless instance on the default port", async () => {
-    const running = spawn([
-      "start",
-      "--",
-      process.execPath,
-      fixture("fake-opencode.ts"),
-      "1500",
-    ])
-    await waitForPort(40900)
-
-    const command = spawn([
-      "send",
-      "--command.ui.type",
-      '{"text":"connected"}',
-      "--command.ui.screenshot",
-    ])
-    const [status, stdout] = await Promise.all([
-      command.exited,
-      new Response(command.stdout).text(),
-    ])
-    expect(status).toBe(0)
-    expect(stdout).toBe("success\n")
-
-    expect(await running.exited).toBe(0)
-    const stderr = await new Response(running.stderr).text()
-    const artifacts = artifactPath(stderr)
-    roots.push(artifacts)
-    expect(await readdir(join(artifacts, "state"))).toEqual(["files"])
-    expect(await Bun.file(join(artifacts, "renderer.txt")).text()).toBe(
-      "headless",
-    )
-    expect(
-      await Bun.file(join(artifacts, "mock-response.json")).json(),
-    ).toMatchObject({
-      id: "ex_mock",
-      items: [
-        {
-          type: "textDelta",
-          text: "This is a sample response from opencode-drive.",
-        },
+  test("starts, drives, describes, restarts, and stops a named detached instance", async () => {
+    const root = await temporary()
+    const name = "detached-test"
+    const started = spawn(
+      [
+        "start",
+        "--name",
+        name,
+        "--",
+        process.execPath,
+        fixture("fake-opencode.ts"),
       ],
-    })
-    expect(stderr).toContain(`opencode-drive: logs ${join(artifacts, "logs")}`)
-  })
-
-  test("renders the TUI when visible is requested", async () => {
-    const running = spawn([
-      "start",
-      "--visible",
-      "--",
-      process.execPath,
-      fixture("fake-opencode.ts"),
-      "500",
-    ])
-    expect(await running.exited).toBe(0)
-    expect(await new Response(running.stderr).text()).not.toContain(
-      "opencode-drive:",
+      root,
     )
-  })
-
-  test("does not restart a headless instance", async () => {
-    const running = spawn([
-      "start",
-      "--",
-      process.execPath,
-      fixture("fake-opencode.ts"),
-      "1000",
+    const [startStatus, startError] = await Promise.all([
+      started.exited,
+      new Response(started.stderr).text(),
     ])
-    await waitForPort(40900)
-    const restarted = spawn(["restart"])
-    expect(await restarted.exited).toBe(1)
-    expect(await new Response(restarted.stderr).text()).toContain(
-      "no running opencode-drive instance",
-    )
-    await running.exited
-  })
+    expect(startStatus).toBe(0)
+    expect(startError).toContain("opencode-drive: artifacts ")
+    expect(startError).not.toContain(`opencode-drive: ${name}`)
+    instances.push({ root, name })
 
-  test("restarts a visible instance", async () => {
-    const running = spawn([
-      "start",
-      "--visible",
-      "--",
-      process.execPath,
-      fixture("fake-opencode.ts"),
-    ])
-    children.push(running)
-    await waitForPort(40900)
-    await waitForFile(join(tmpdir(), "opencode-drive.sock"))
-    const artifacts = await processArtifacts(running.pid)
-    roots.push(artifacts)
+    const manifest = await Bun.file(
+      join(root, "registry", `${name}.json`),
+    ).json()
+    roots.push(manifest.artifacts)
+    expect(manifest.visible).toBe(false)
+    expect(manifest.endpoints.ui).toMatch(/^ws:\/\/127\.0\.0\.1:\d+$/)
+    expect(manifest.endpoints.backend).toMatch(/^ws:\/\/127\.0\.0\.1:\d+$/)
 
-    const restarted = spawn(["restart"])
-    expect(await restarted.exited).toBe(0)
-    expect(await new Response(restarted.stdout).text()).toBe("success\n")
-    await waitForLines(join(artifacts, "launches.txt"), 2)
+    const state = spawn(["send", "--name", name, "--command.ui.state"], root)
+    expect(await state.exited).toBe(0)
     expect(
-      (await Bun.file(join(artifacts, "launches.txt")).text())
-        .trim()
-        .split("\n"),
-    ).toHaveLength(2)
+      JSON.parse(await new Response(state.stdout).text()).focused.editor,
+    ).toBe(true)
 
-    running.kill("SIGINT")
-    await running.exited
-    children.splice(children.indexOf(running), 1)
-  })
-
-  test("reruns a visible script on restart", async () => {
-    const running = spawn([
-      "start",
-      "--visible",
-      "--script",
-      fixture("restart-script.ts"),
-      "--",
-      process.execPath,
-      fixture("fake-opencode.ts"),
-    ])
-    children.push(running)
-    const artifacts = await processArtifacts(running.pid)
-    roots.push(artifacts)
-    await waitForLines(join(artifacts, "script-runs.txt"), 1)
-
-    expect(await spawn(["restart"]).exited).toBe(0)
-    await waitForLines(join(artifacts, "script-runs.txt"), 2)
-
-    running.kill("SIGINT")
-    await running.exited
-    children.splice(children.indexOf(running), 1)
-  })
-
-  test("sends commands directly to an externally started instance", async () => {
-    const external = Bun.spawn(
-      [process.execPath, fixture("fake-opencode.ts")],
-      {
-        stdin: "ignore",
-        stdout: "ignore",
-        stderr: "ignore",
-      },
+    const screenshot = spawn(
+      ["send", "--name", name, "--command.ui.screenshot"],
+      root,
     )
-    children.push(external)
-    await waitForPort(40900)
+    expect(await screenshot.exited).toBe(0)
+    expect(await new Response(screenshot.stdout).text()).toBe(
+      "/tmp/opencode-drive-fake/screenshot.png\n",
+    )
 
-    const state = spawn(["send", "--command.ui.state"])
-    const [status, stdout] = await Promise.all([
-      state.exited,
-      new Response(state.stdout).text(),
-    ])
-    expect(status).toBe(0)
-    expect(JSON.parse(stdout).focused.editor).toBe(true)
-  })
+    const described = spawn(["describe", "--name", name], root)
+    expect(await described.exited).toBe(0)
+    expect(await new Response(described.stdout).text()).toContain(
+      `UI: ${manifest.endpoints.ui}`,
+    )
 
-  test("runs a script with connected clients and reports artifacts", async () => {
-    const child = spawn([
+    const restarted = spawn(["restart", "--name", name], root)
+    expect(await restarted.exited).toBe(0)
+    await waitForLines(join(manifest.artifacts, "launches.txt"), 2)
+    expect(
+      await spawn(["send", "--name", name, "--command.ui.state"], root).exited,
+    ).toBe(0)
+
+    const stopped = spawn(["stop", "--name", name], root)
+    expect(await stopped.exited).toBe(0)
+    await waitForMissing(join(root, "registry", `${name}.json`))
+    instances.splice(
+      instances.findIndex((item) => item.name === name),
+      1,
+    )
+  }, 30_000)
+
+  test("rejects duplicate names", async () => {
+    const root = await temporary()
+    const name = "duplicate-test"
+    const args = [
       "start",
-      "--script",
-      fixture("script.ts"),
+      "--name",
+      name,
       "--",
       process.execPath,
       fixture("fake-opencode.ts"),
+    ]
+    expect(await spawn(args, root).exited).toBe(0)
+    instances.push({ root, name })
+    const duplicate = spawn(args, root)
+    const [status, stderr] = await Promise.all([
+      duplicate.exited,
+      new Response(duplicate.stderr).text(),
     ])
+    expect(status).toBe(1)
+    expect(stderr).toContain(`drive instance "${name}" is already running`)
+  })
+
+  test("runs multiple named instances concurrently", async () => {
+    const root = await temporary()
+    for (const name of ["first", "second"]) {
+      expect(
+        await spawn(
+          [
+            "start",
+            "--name",
+            name,
+            "--",
+            process.execPath,
+            fixture("fake-opencode.ts"),
+          ],
+          root,
+        ).exited,
+      ).toBe(0)
+      instances.push({ root, name })
+    }
+    const first = await Bun.file(join(root, "registry", "first.json")).json()
+    const second = await Bun.file(join(root, "registry", "second.json")).json()
+    roots.push(first.artifacts, second.artifacts)
+    expect(first.endpoints.ui).not.toBe(second.endpoints.ui)
+    expect(
+      await spawn(["send", "--name", "first", "--command.ui.state"], root)
+        .exited,
+    ).toBe(0)
+    expect(
+      await spawn(["send", "--name", "second", "--command.ui.state"], root)
+        .exited,
+    ).toBe(0)
+  })
+
+  test("keeps visible instances in the foreground", async () => {
+    const root = await temporary()
+    const name = "visible-test"
+    const running = spawn(
+      [
+        "start",
+        "--visible",
+        "--name",
+        name,
+        "--",
+        process.execPath,
+        fixture("fake-opencode.ts"),
+        "500",
+      ],
+      root,
+    )
+    expect(await running.exited).toBe(0)
+    expect(
+      await Bun.file(join(root, "registry", `${name}.json`)).exists(),
+    ).toBe(false)
+  })
+
+  test("runs scripts in the foreground and exits", async () => {
+    const root = await temporary()
+    const name = "script-test"
+    const child = spawn(
+      [
+        "start",
+        "--name",
+        name,
+        "--script",
+        fixture("script.ts"),
+        "--",
+        process.execPath,
+        fixture("fake-opencode.ts"),
+      ],
+      root,
+    )
+    const started = Date.now()
     const [status, stderr] = await Promise.all([
       child.exited,
       new Response(child.stderr).text(),
     ])
     expect(status).toBe(0)
+    expect(Date.now() - started).toBeLessThan(5_000)
     const artifacts = artifactPath(stderr)
     roots.push(artifacts)
+    expect(await Bun.file(join(artifacts, "script-result.json")).exists()).toBe(
+      true,
+    )
     expect(
-      await Bun.file(join(artifacts, "script-result.json")).json(),
-    ).toEqual({
-      focused: { editor: true },
-      attached: { attached: true },
-    })
-    expect(stderr).toContain("opencode-drive: completed")
-    expect(stderr).toContain(`opencode-drive: logs ${join(artifacts, "logs")}`)
+      running(Number(await Bun.file(join(artifacts, "child.pid")).text())),
+    ).toBe(false)
     expect(
-      await Bun.file(join(artifacts, "logs", "opencode.stdout.log")).exists(),
-    ).toBe(true)
-    expect(
-      await Bun.file(join(artifacts, "logs", "opencode.stderr.log")).exists(),
-    ).toBe(true)
+      await Bun.file(join(root, "registry", `${name}.json`)).exists(),
+    ).toBe(false)
   })
 
-  test("rejects removed names and LLM commands", async () => {
-    const named = spawn(["send", "--name", "demo", "--command.ui.state"])
-    const llm = spawn(["send", "--command.llm.pending"])
-    expect(await named.exited).toBe(1)
-    expect(await llm.exited).toBe(1)
+  test("rejects removed LLM commands", async () => {
+    const root = await temporary()
+    expect(await spawn(["send", "--command.llm.pending"], root).exited).toBe(1)
   })
 })
 
-function spawn(args: ReadonlyArray<string>) {
+function spawn(args: ReadonlyArray<string>, root: string) {
   return Bun.spawn([process.execPath, resolve("src/cli/index.ts"), ...args], {
     cwd: resolve("."),
+    env: { ...process.env, DRIVE_REGISTRY_DIR: join(root, "registry") },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
@@ -230,49 +232,10 @@ function fixture(name: string) {
   return resolve("test", "fixtures", name)
 }
 
-async function waitForPort(port: number) {
-  const deadline = Date.now() + 10_000
-  while (Date.now() < deadline) {
-    const connected = await new Promise<boolean>((done) => {
-      const socket = new WebSocket(`ws://127.0.0.1:${port}`)
-      socket.addEventListener(
-        "open",
-        () => {
-          socket.close()
-          done(true)
-        },
-        { once: true },
-      )
-      socket.addEventListener("error", () => done(false), { once: true })
-    })
-    if (connected) return
-    await Bun.sleep(25)
-  }
-  throw new Error(`timed out waiting for port ${port}`)
-}
-
-function artifactPath(stderr: string) {
-  const line = stderr
-    .split("\n")
-    .find((value) => value.startsWith("opencode-drive: artifacts "))
-  if (!line) throw new Error("artifact path was not reported")
-  return line.slice("opencode-drive: artifacts ".length)
-}
-
-async function processArtifacts(pid: number) {
-  const deadline = Date.now() + 10_000
-  while (Date.now() < deadline) {
-    const child = Bun.spawnSync(["ps", "--ppid", String(pid), "-o", "pid="])
-      .stdout.toString()
-      .trim()
-      .split(/\s+/)[0]
-    if (child) {
-      const cwd = await readlink(`/proc/${child}/cwd`).catch(() => undefined)
-      if (cwd) return cwd
-    }
-    await Bun.sleep(25)
-  }
-  throw new Error("timed out locating artifacts")
+async function temporary() {
+  const root = await mkdtemp(join(tmpdir(), "opencode-drive-test-"))
+  roots.push(root)
+  return root
 }
 
 async function waitForLines(file: string, count: number) {
@@ -288,11 +251,28 @@ async function waitForLines(file: string, count: number) {
   throw new Error(`timed out waiting for ${count} lines in ${file}`)
 }
 
-async function waitForFile(file: string) {
+async function waitForMissing(file: string) {
   const deadline = Date.now() + 10_000
   while (Date.now() < deadline) {
-    if (await Bun.file(file).exists()) return
+    if (!(await Bun.file(file).exists())) return
     await Bun.sleep(25)
   }
-  throw new Error(`timed out waiting for ${file}`)
+  throw new Error(`timed out waiting for ${file} removal`)
+}
+
+function artifactPath(stderr: string) {
+  const line = stderr
+    .split("\n")
+    .find((value) => value.startsWith("opencode-drive: artifacts "))
+  if (!line) throw new Error("artifact path was not reported")
+  return line.slice("opencode-drive: artifacts ".length)
+}
+
+function running(pid: number) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
 }

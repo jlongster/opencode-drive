@@ -1,21 +1,48 @@
-import {
-  Frontend,
-  type JsonRpc,
-} from "./protocol.js"
+import { Frontend, type JsonRpc } from "./protocol.js"
 
 const defaultPort = 40900
 
 type Methods = {
-  readonly "ui.screenshot": { readonly params: undefined; readonly result: Frontend.Screenshot }
-  readonly "ui.state": { readonly params: undefined; readonly result: Frontend.State }
-  readonly "ui.start-record": { readonly params: undefined; readonly result: Frontend.StartRecord }
-  readonly "ui.end-record": { readonly params: undefined; readonly result: Frontend.EndRecord }
-  readonly "ui.type": { readonly params: Frontend.TypeParams; readonly result: Frontend.State }
-  readonly "ui.press": { readonly params: Frontend.PressParams; readonly result: Frontend.State }
-  readonly "ui.enter": { readonly params: undefined; readonly result: Frontend.State }
-  readonly "ui.arrow": { readonly params: Frontend.ArrowParams; readonly result: Frontend.State }
-  readonly "ui.focus": { readonly params: Frontend.FocusParams; readonly result: Frontend.State }
-  readonly "ui.click": { readonly params: Frontend.ClickParams; readonly result: Frontend.State }
+  readonly "ui.screenshot": {
+    readonly params: undefined
+    readonly result: Frontend.Screenshot
+  }
+  readonly "ui.state": {
+    readonly params: undefined
+    readonly result: Frontend.State
+  }
+  readonly "ui.start-record": {
+    readonly params: undefined
+    readonly result: Frontend.StartRecord
+  }
+  readonly "ui.end-record": {
+    readonly params: undefined
+    readonly result: Frontend.EndRecord
+  }
+  readonly "ui.type": {
+    readonly params: Frontend.TypeParams
+    readonly result: Frontend.State
+  }
+  readonly "ui.press": {
+    readonly params: Frontend.PressParams
+    readonly result: Frontend.State
+  }
+  readonly "ui.enter": {
+    readonly params: undefined
+    readonly result: Frontend.State
+  }
+  readonly "ui.arrow": {
+    readonly params: Frontend.ArrowParams
+    readonly result: Frontend.State
+  }
+  readonly "ui.focus": {
+    readonly params: Frontend.FocusParams
+    readonly result: Frontend.State
+  }
+  readonly "ui.click": {
+    readonly params: Frontend.ClickParams
+    readonly result: Frontend.State
+  }
 }
 
 type MethodName = keyof Methods
@@ -73,12 +100,20 @@ export class SimulationClient {
     this.socket = socket
     this.url = url
     this.timeout = timeout
-    socket.addEventListener("message", (event) => this.onMessage(String(event.data)))
-    socket.addEventListener("close", () => this.rejectAll(new SimulationError("connection closed")))
-    socket.addEventListener("error", () => this.rejectAll(new SimulationError("connection error")))
+    socket.addEventListener("message", (event) =>
+      this.onMessage(String(event.data)),
+    )
+    socket.addEventListener("close", () =>
+      this.rejectAll(new SimulationError("connection closed")),
+    )
+    socket.addEventListener("error", () =>
+      this.rejectAll(new SimulationError("connection error")),
+    )
   }
 
-  static async connect(options?: SimulationClientOptions): Promise<SimulationClient> {
+  static async connect(
+    options?: SimulationClientOptions,
+  ): Promise<SimulationClient> {
     const timeout = options?.timeout ?? 30_000
     if (options?.url !== undefined) {
       return new SimulationClient(await open(options.url), options.url, timeout)
@@ -100,7 +135,10 @@ export class SimulationClient {
   }
 
   /** Raw JSON-RPC call. Prefer the typed wrappers below. */
-  async call<M extends MethodName>(method: M, params?: Methods[M]["params"]): Promise<Methods[M]["result"]> {
+  async call<M extends MethodName>(
+    method: M,
+    params?: Methods[M]["params"],
+  ): Promise<Methods[M]["result"]> {
     if (this.socket.readyState !== WebSocket.OPEN) {
       throw new SimulationError("connection is not open", method)
     }
@@ -112,7 +150,14 @@ export class SimulationClient {
       }, this.timeout)
       this.pending.set(id, { method, resolve, reject, timer })
     })
-    this.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, ...(params === undefined ? {} : { params }) }))
+    this.socket.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id,
+        method,
+        ...(params === undefined ? {} : { params }),
+      }),
+    )
     // The server contract types each method's result; the cast happens once
     // here rather than at every call site.
     return (await promise) as Methods[M]["result"]
@@ -142,15 +187,23 @@ export class SimulationClient {
     return this.call("ui.type", { text })
   }
 
-  pressKey(key: string, modifiers?: Frontend.KeyModifiers): Promise<Frontend.State> {
-    return this.call("ui.press", { key: key === "escape" ? "\u001b" : key, ...(modifiers === undefined ? {} : { modifiers }) })
+  pressKey(
+    key: string,
+    modifiers?: Frontend.KeyModifiers,
+  ): Promise<Frontend.State> {
+    return this.call("ui.press", {
+      key: key === "escape" ? "\u001b" : key,
+      ...(modifiers === undefined ? {} : { modifiers }),
+    })
   }
 
   pressEnter(): Promise<Frontend.State> {
     return this.call("ui.enter")
   }
 
-  pressArrow(direction: "up" | "down" | "left" | "right"): Promise<Frontend.State> {
+  pressArrow(
+    direction: "up" | "down" | "left" | "right",
+  ): Promise<Frontend.State> {
     return this.call("ui.arrow", { direction })
   }
 
@@ -165,7 +218,7 @@ export class SimulationClient {
   // ── lifecycle ─────────────────────────────────────────────────────────
 
   close(): void {
-    this.socket.close()
+    this.socket.terminate()
   }
 
   private onMessage(data: string) {
@@ -175,7 +228,8 @@ export class SimulationClient {
     if (waiter === undefined) return
     this.pending.delete(message.id)
     clearTimeout(waiter.timer)
-    if (message.error) waiter.reject(new SimulationError(message.error.message, waiter.method))
+    if (message.error)
+      waiter.reject(new SimulationError(message.error.message, waiter.method))
     else waiter.resolve(message.result)
   }
 
@@ -199,14 +253,16 @@ function parseResponse(data: string): JsonRpc.Response | undefined {
   if (!("jsonrpc" in value) || value.jsonrpc !== "2.0") return undefined
   if (!("id" in value)) return undefined
   const id = value.id
-  if (typeof id !== "number" && typeof id !== "string" && id !== null) return undefined
+  if (typeof id !== "number" && typeof id !== "string" && id !== null)
+    return undefined
   const result = "result" in value ? value.result : undefined
   const error = "error" in value ? value.error : undefined
   if (error !== undefined) {
     if (typeof error !== "object" || error === null) return undefined
     const code = "code" in error ? error.code : undefined
     const message = "message" in error ? error.message : undefined
-    if (typeof code !== "number" || typeof message !== "string") return undefined
+    if (typeof code !== "number" || typeof message !== "string")
+      return undefined
     return { jsonrpc: "2.0", id, error: { code, message } }
   }
   return { jsonrpc: "2.0", id, result: result as JsonRpc.Response["result"] }
@@ -232,5 +288,6 @@ function open(url: string): Promise<WebSocket> {
   })
 }
 
-export const connectSimulation = (options?: SimulationClientOptions): Promise<SimulationClient> =>
-  SimulationClient.connect(options)
+export const connectSimulation = (
+  options?: SimulationClientOptions,
+): Promise<SimulationClient> => SimulationClient.connect(options)

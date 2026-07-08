@@ -1,10 +1,14 @@
 import { executeCommands } from "./commands.js"
 import type { SendOptions } from "./types.js"
+import { resolveInstance } from "./registry.js"
 
 export async function send(options: SendOptions) {
   if (options.commands.length === 0)
     throw new Error("send requires at least one --command.ui.* flag")
-  const result = await executeCommands(options.commands)
+  const result = await executeCommands(
+    (await resolveInstance(options.name)).endpoints.ui,
+    options.commands,
+  )
   if (
     options.commands.length === 1 &&
     ["ui.screenshot", "ui.end-record"].includes(
