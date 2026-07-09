@@ -57,3 +57,39 @@ opencode-drive prune
 While developing, you can run `opencode-drive restart` to restart only the UI (the server will persist as a separate process). Do this with agents, and they will always restart and get the UI where you want it to be automatically.
 
 View the [skills file](https://github.com/jlongster/opencode-drive/blob/main/skills/opencode-drive/SKILL.md) for more details about the CLI.
+
+## Script API
+
+Scripted runs use one fully typed definition:
+
+```ts
+import { defineScript } from "opencode-drive"
+
+export default defineScript({
+  async setup({ fs }) {
+    await fs.writeFile("src/example.ts", "export const value = 1\n")
+  },
+  async run({ ui, llm }) {
+    await ui.submit("Read src/example.ts")
+    await llm.send(llm.text("The value is 1."))
+    await ui.waitFor("The value is 1.")
+  },
+})
+```
+
+Use `await llm.send(...)` to wait for and complete the next request,
+`llm.queue(...)` to declare future responses upfront, or `llm.serve(async
+function* () { ... })` for ongoing streamed responses. The backend connection,
+default `finish("stop")`, cancellation, and cleanup are automatic. All public
+script types are canonically defined in [`src/script/types.ts`](./src/script/types.ts),
+which can be provided directly to an authoring agent.
+
+`llm.text()` streams text in randomized chunks. It defaults to a 2 ms delay and
+a target chunk size of 15 characters, varied by plus or minus 5 per chunk:
+
+```ts
+llm.text("A deliberately slower response", { delay: 20, chunkSize: 10 })
+```
+
+`llm.reasoning()` accepts the same streaming options. Use
+`llm.pause(milliseconds)` to add timing between any two outputs.

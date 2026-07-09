@@ -6,7 +6,7 @@ import { exportRecording } from "../recording/index.js"
 import { connectMockBackend } from "./mock-backend.js"
 import { createResponseSettings } from "./response-generator.js"
 import { loadScript, runScript } from "./script.js"
-import type { DriveScript } from "./script.js"
+import type { ScriptDefinition } from "../script/types.js"
 import { listenControl } from "../instance/control.js"
 import {
   controlPath,
@@ -105,7 +105,7 @@ export async function start(options: StartOptions) {
           driveReady = false
           await instance.restart()
           recording = undefined
-          current = run(options, instance, responses, script?.run, (path) => screenshots.push(path))
+          current = run(options, instance, responses, script, (path) => screenshots.push(path))
           await current.ready
           driveReady = true
           await markReady(options.name, process.pid)
@@ -122,27 +122,55 @@ export async function start(options: StartOptions) {
         return responses.update(input)
       },
     })
-    current = run(options, instance, responses, script?.run, (path) => screenshots.push(path))
+    current = run(options, instance, responses, script, (path) => screenshots.push(path))
     await current.ready
     driveReady = true
     await markReady(options.name, process.pid)
     if (options.visible) {
-      const result = options.script
-        ? await Promise.race([
-            current.promise.then(() => ({ script: true as const })),
-            instance.wait().then((status) => ({ script: false as const, status })),
-          ])
-        : { script: false as const, status: await instance.wait() }
-      if (result.script) {
-        await completeScript()
+      while (true) {
+        const active: NonNullable<typeof current> = current
+        let result:
+          | { readonly script: true }
+          | { readonly script: false; readonly status: number }
+        try {
+          result = options.script
+            ? await Promise.race([
+                active.promise.then(() => ({ script: true as const })),
+                instance.wait().then((status) => ({ script: false as const, status })),
+              ])
+            : { script: false as const, status: await instance.wait() }
+        } catch (error) {
+          if (stopping) return
+          if (restarting || active !== current) {
+            await restarting
+            continue
+          }
+          throw error
+        }
+        if (restarting || active !== current) {
+          await restarting
+          continue
+        }
+        if (result.script) {
+          await completeScript()
+        }
+        const status = result.script ? await instance.wait() : result.status
+        if (status !== 0 && !stopping) process.exitCode = status
+        return
       }
-      const status = result.script ? await instance.wait() : result.status
-      if (status !== 0 && !stopping) process.exitCode = status
-      return
     }
     while (true) {
       const active: NonNullable<typeof current> = current
-      await active.promise
+      try {
+        await active.promise
+      } catch (error) {
+        if (stopping) break
+        if (restarting || active !== current) {
+          await restarting
+          continue
+        }
+        throw error
+      }
       if (stopping) break
       if (restarting) {
         await restarting
@@ -259,7 +287,7 @@ function run(
   options: StartOptions,
   instance: Awaited<ReturnType<typeof launchInstance>>,
   responses: ReturnType<typeof createResponseSettings>,
-  driveScript: DriveScript | undefined,
+  driveScript: ScriptDefinition | undefined,
   onScreenshot: (path: string) => void,
 ) {
   const abort = new AbortController()

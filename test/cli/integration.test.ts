@@ -470,6 +470,30 @@ describe("opencode-drive", () => {
     const artifacts = artifactPath(stderr)
     roots.push(artifacts)
     expect(await Bun.file(join(artifacts, "script-result.json")).json()).toMatchObject({ matches: true })
+    const backendEvents = (await Bun.file(join(artifacts, "backend-events.jsonl")).text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    expect(
+      backendEvents
+        .filter((event) => event.method === "llm.chunk")
+        .flatMap((event) => event.params.items)
+        .filter((item) => item.type === "textDelta")
+        .map((item) => item.text)
+        .join(""),
+    ).toBe("script response")
+    expect(
+      backendEvents.filter((event) => event.method === "llm.chunk").length,
+    ).toBeGreaterThan(1)
+    expect(
+      backendEvents
+        .filter((event) => event.method === "llm.chunk")
+        .flatMap((event) => event.params.items)
+        .every((item) => item.type !== "textDelta" || item.text.length <= 8),
+    ).toBe(true)
+    expect(backendEvents.filter((event) => event.method === "llm.finish")).toEqual([
+      { method: "llm.finish", params: { id: "ex_mock", reason: "stop" } },
+    ])
     expect(await Bun.file(join(artifacts, "seeded-at-launch.txt")).text()).toBe(
       "export const seeded = true\n",
     )
@@ -477,6 +501,18 @@ describe("opencode-drive", () => {
     const pid = Number(await Bun.file(join(artifacts, "child.pid")).text())
     expect(running(pid)).toBe(false)
     expect(await Bun.file(join(root, "registry", `${name}.json`)).exists()).toBe(false)
+  })
+
+  test("rejects the removed callback script shape", async () => {
+    const root = await temporary()
+    const child = spawn(
+      ["start", "--name", "callback-script-test", "--script", fixture("callback-script.ts")],
+      root,
+    )
+    expect(await child.exited).toBe(1)
+    expect(await new Response(child.stderr).text()).toContain(
+      "script must default-export defineScript({ setup?, run })",
+    )
   })
 
   test("stops a visible instance after a script completes", async () => {
@@ -498,6 +534,96 @@ describe("opencode-drive", () => {
     )
     expect(await child.exited).toBe(0)
     expect(await Bun.file(join(root, "registry", `${name}.json`)).exists()).toBe(false)
+  })
+
+  test("serves typed LLM chunks and preserves an explicit finish", async () => {
+    const root = await temporary()
+    const child = spawn(
+      [
+        "start",
+        "--name",
+        "serve-script-test",
+        "--script",
+        fixture("serve-script.ts"),
+        "--",
+        process.execPath,
+        fixture("fake-opencode.ts"),
+      ],
+      root,
+    )
+    const stderr = new Response(child.stderr).text()
+    expect(await child.exited).toBe(0)
+    const artifacts = artifactPath(await stderr)
+    roots.push(artifacts)
+    const events = (await Bun.file(join(artifacts, "backend-events.jsonl")).text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    expect(
+      events
+        .filter((event) => event.method === "llm.chunk")
+        .flatMap((event) => event.params.items)
+        .filter((item) => item.type === "textDelta")
+        .map((item) => item.text)
+        .join(""),
+    ).toBe("served response")
+    expect(
+      events
+        .filter((event) => event.method === "llm.chunk")
+        .flatMap((event) => event.params.items)
+        .filter((item) => item.type === "reasoningDelta")
+        .map((item) => item.text)
+        .join(""),
+    ).toBe("thinking")
+    expect(events.filter((event) => event.method === "llm.finish")).toEqual([
+      { method: "llm.finish", params: { id: "ex_mock", reason: "length" } },
+    ])
+  })
+
+  test("waits for a delayed request to accept a sent LLM response", async () => {
+    const root = await temporary()
+    const child = spawn(
+      [
+        "start",
+        "--name",
+        "delayed-queue-test",
+        "--script",
+        fixture("script.ts"),
+        "--",
+        process.execPath,
+        fixture("fake-opencode.ts"),
+        "10000",
+        "250",
+      ],
+      root,
+    )
+    expect(await child.exited).toBe(0)
+  })
+
+  test("restarts an active scripted run", async () => {
+    const root = await temporary()
+    const name = "restart-script-test"
+    const owner = spawn(
+      [
+        "start",
+        "--name",
+        name,
+        "--script",
+        fixture("restart-script.ts"),
+        "--",
+        process.execPath,
+        fixture("fake-opencode.ts"),
+      ],
+      root,
+    )
+    const manifest = await waitForManifest(root, name)
+    roots.push(manifest.artifacts)
+    await waitForLines(join(manifest.artifacts, "script-runs.txt"), 1)
+
+    expect(await spawn(["restart", "--name", name], root).exited).toBe(0)
+    await waitForLines(join(manifest.artifacts, "script-runs.txt"), 2)
+    expect(await spawn(["stop", "--name", name], root).exited).toBe(0)
+    expect(await owner.exited).toBe(0)
   })
 
   test("stops a hanging script after the OpenCode child exits", async () => {
@@ -739,6 +865,20 @@ async function waitForLines(file: string, count: number) {
     await Bun.sleep(25)
   }
   throw new Error(`timed out waiting for ${count} lines in ${file}`)
+}
+
+async function waitForManifest(root: string, name: string) {
+  const file = join(root, "registry", `${name}.json`)
+  const deadline = Date.now() + 10_000
+  while (Date.now() < deadline) {
+    const manifest = await Bun.file(file)
+      .json()
+      .catch(() => undefined)
+    if (manifest?.status === "ready")
+      return manifest as { readonly artifacts: string }
+    await Bun.sleep(25)
+  }
+  throw new Error(`timed out waiting for ${file}`)
 }
 
 async function waitForMissing(file: string) {

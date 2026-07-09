@@ -8,7 +8,10 @@ type BackendMethods = {
     readonly result: { readonly attached: true }
   }
   readonly "llm.chunk": {
-    readonly params: Backend.ChunkParams
+    readonly params: {
+      readonly id: string
+      readonly items: ReadonlyArray<Backend.Item>
+    }
     readonly result: { readonly ok: true }
   }
   readonly "llm.finish": {

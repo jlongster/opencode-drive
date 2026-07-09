@@ -1,4 +1,5 @@
 import { Backend } from "../client/protocol.js"
+import type { JsonValue } from "../script/types.js"
 
 export const responseTypes = ["text", "reasoning", "tool", "diff"] as const
 export type ResponseType = (typeof responseTypes)[number]
@@ -12,14 +13,6 @@ export interface ResponseUpdate {
   readonly types?: ReadonlyArray<string>
   readonly tools?: ReadonlyArray<string>
 }
-
-type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | ReadonlyArray<JsonValue>
-  | { readonly [key: string]: JsonValue }
 
 const textResponses = [
   "I took a careful look at the problem and followed it through the parts of the system that actually shape the behavior. The result is simpler than it first appeared: one clear boundary, one owner, and fewer opportunities for state to drift. There is a quiet satisfaction in watching the pieces settle into place.",

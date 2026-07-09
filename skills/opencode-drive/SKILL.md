@@ -162,28 +162,50 @@ Write a script and pass it with `--script`:
 opencode-drive start --name auto-stop-reproduction --script ./reproduce-stale-exploring-empty.ts
 ```
 
-Scripts can export a `setup` function to seed the simulated project before
-OpenCode starts:
+Scripts use one typed definition object. `setup` runs before OpenCode starts,
+and `fs.writeFile` always writes inside the simulated project:
 
 ```ts
-import { join } from "node:path"
-import { defineScript, type ScriptSetupContext } from "opencode-drive"
+import { defineScript } from "opencode-drive"
 
-export async function setup({ directory }: ScriptSetupContext) {
-  await Bun.write(
-    join(directory, "src", "example.ts"),
-    "export const value = 1\n",
-  )
-}
+export default defineScript({
+  async setup({ fs }) {
+    await fs.writeFile("src/example.ts", "export const value = 1\n")
+  },
 
-export default defineScript(async ({ ui }) => {
-  await ui.typeText("Open src/example.ts")
-  const visible = await ui.matches("Open src/example.ts")
-  if (!visible) throw new Error("prompt text is not visible")
+  async run({ ui, llm }) {
+    await ui.submit("Open src/example.ts")
+    await llm.send(llm.text("The file exports `value`."))
+    await ui.waitFor("The file exports `value`.")
+  },
 })
 ```
 
+`await llm.send(...)` waits for the next request and resolves after OpenCode
+acknowledges its complete response. `llm.queue(...)` declares responses in
+advance. Chunks may be built with `text`, `reasoning`, `toolCall`, `raw`,
+`finish`, and `disconnect`. A normal response receives `finish("stop")`
+automatically unless it yields or queues an explicit terminal event.
+`llm.text(text, { delay, chunkSize })` defaults to a 2 ms delay and a
+15-character target varied by plus or minus 5 per chunk.
+`llm.reasoning` accepts the same options, and `llm.pause(milliseconds)` adds a
+delay between any two outputs.
+
+Use `llm.serve` for an ongoing typed response generator:
+
+```ts
+llm.serve(async function* (request, index) {
+  yield llm.reasoning(`Handling request ${index + 1}`)
+  yield llm.text(`Received ${request.id}`)
+  yield llm.finish("stop")
+})
+```
+
+The backend connection, response cleanup, cancellation, and recording
+completion are automatic. The complete authoring contract is in
+`src/script/types.ts`.
+
 You can see some example scripts here:
 
-- https://raw.githubusercontent.com/jlongster/opencode-drive/refs/heads/main/examples/two-turn-recording.ts
-- https://raw.githubusercontent.com/jlongster/opencode-drive/refs/heads/main/examples/multiple-tool-calls.ts
+- https://raw.githubusercontent.com/jlongster/opencode-drive/refs/heads/main/examples/simple.ts
+- https://raw.githubusercontent.com/jlongster/opencode-drive/refs/heads/main/examples/serve.ts

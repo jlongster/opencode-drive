@@ -69,11 +69,28 @@ const backend = Bun.serve({
         readonly method: string
         readonly params?: unknown
       }
+      if (request.method === "llm.chunk" && process.env.OPENCODE_TEST_HOME) {
+        await Bun.write(
+          `${process.env.OPENCODE_TEST_HOME}/mock-response.json`,
+          JSON.stringify(request.params),
+        )
+      }
+      if (request.method.startsWith("llm.") && process.env.OPENCODE_TEST_HOME) {
+        const events = `${process.env.OPENCODE_TEST_HOME}/backend-events.jsonl`
+        await Bun.write(
+          events,
+          `${await Bun.file(events)
+            .text()
+            .catch(() => "")}${JSON.stringify({ method: request.method, params: request.params })}\n`,
+        )
+      }
       const result =
         request.method === "llm.attach" ? { attached: true } : { ok: true }
       if (request.id !== undefined)
         socket.send(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }))
       if (request.method === "llm.attach") {
+        const requestDelay = Number(process.argv[3])
+        if (Number.isFinite(requestDelay)) await Bun.sleep(requestDelay)
         socket.send(
           JSON.stringify({
             jsonrpc: "2.0",
@@ -84,12 +101,6 @@ const backend = Bun.serve({
               body: {},
             },
           }),
-        )
-      }
-      if (request.method === "llm.chunk" && process.env.OPENCODE_TEST_HOME) {
-        await Bun.write(
-          `${process.env.OPENCODE_TEST_HOME}/mock-response.json`,
-          JSON.stringify(request.params),
         )
       }
     },
@@ -129,9 +140,21 @@ function frontend(method: string, params: unknown) {
   if (method === "trace.clear") return { cleared: true }
   return {
     screen: screen.value,
-    focused: { editor: true },
-    elements: [],
-    actions: [],
+    focused: { renderable: 1, editor: true },
+    elements: [
+      {
+        id: "prompt",
+        num: 1,
+        x: 0,
+        y: 0,
+        width: 80,
+        height: 1,
+        focusable: true,
+        focused: true,
+        clickable: true,
+        editor: true,
+      },
+    ],
   }
 }
 

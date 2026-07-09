@@ -13,7 +13,8 @@
     ".": "./src/index.ts",
     "./client": "./src/client/index.ts",
     "./experimental": "./src/experimental/index.ts",
-    "./recording": "./src/recording/index.ts"
+    "./recording": "./src/recording/index.ts",
+    "./script": "./src/script/index.ts"
   },
   "files": [
     "bin/opencode-drive",
@@ -22,6 +23,7 @@
     "src/experimental",
     "src/instance",
     "src/recording",
+    "src/script",
     "src/index.ts",
     "README.md"
   ],

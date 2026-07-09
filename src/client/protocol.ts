@@ -1,4 +1,13 @@
 import { Effect, Schema } from "effect"
+import type {
+  LlmFinishReason,
+  LlmItem,
+  LlmRequest,
+  UiAction,
+  UiElement,
+  UiKeyModifiers,
+  UiState,
+} from "../script/types.js"
 
 const JsonRpcID = Schema.Union([Schema.String, Schema.Number, Schema.Null])
 type Json = Schema.Schema.Type<typeof Schema.Json>
@@ -59,9 +68,7 @@ export namespace Frontend {
     super: Schema.optional(Schema.Boolean),
     hyper: Schema.optional(Schema.Boolean),
   })
-  export interface KeyModifiers extends Schema.Schema.Type<
-    typeof KeyModifiers
-  > {}
+  export type KeyModifiers = UiKeyModifiers
 
   export const Action = Schema.Union([
     Schema.Struct({ type: Schema.Literal("ui.type"), text: Schema.String }),
@@ -83,7 +90,7 @@ export namespace Frontend {
       y: Schema.Number,
     }),
   ])
-  export type Action = Schema.Schema.Type<typeof Action>
+  export type Action = UiAction
 
   export const Element = Schema.Struct({
     id: Schema.String,
@@ -97,7 +104,7 @@ export namespace Frontend {
     clickable: Schema.Boolean,
     editor: Schema.Boolean,
   })
-  export interface Element extends Schema.Schema.Type<typeof Element> {}
+  export type Element = UiElement
 
   export const State = Schema.Struct({
     focused: Schema.Struct({
@@ -106,7 +113,7 @@ export namespace Frontend {
     }),
     elements: Schema.Array(Element),
   })
-  export interface State extends Schema.Schema.Type<typeof State> {}
+  export type State = UiState
 
   export const Screenshot = Schema.String
   export type Screenshot = Schema.Schema.Type<typeof Screenshot>
@@ -211,7 +218,7 @@ export namespace Backend {
     }),
     Schema.Struct({ type: Schema.Literal("raw"), chunk: Schema.Json }),
   ])
-  export type Item = Schema.Schema.Type<typeof Item>
+  export type Item = LlmItem
 
   export const FinishReason = Schema.Literals([
     "stop",
@@ -219,7 +226,7 @@ export namespace Backend {
     "length",
     "content-filter",
   ])
-  export type FinishReason = Schema.Schema.Type<typeof FinishReason>
+  export type FinishReason = LlmFinishReason
 
   export const ChunkParams = Schema.Struct({
     id: Schema.String,
@@ -271,9 +278,7 @@ export namespace Backend {
     url: Schema.String,
     body: Schema.Json,
   })
-  export interface OpenedExchange extends Schema.Schema.Type<
-    typeof OpenedExchange
-  > {}
+  export type OpenedExchange = LlmRequest
 
   export const NetworkLogEntry = Schema.Struct({
     time: Schema.Number,

@@ -1,58 +1,59 @@
 import { join } from "node:path"
 import { defineScript } from "../index.js"
+import type { ScriptUi } from "../index.js"
 
-export default defineScript(async ({ artifacts, backend, ui }) => {
-  const completed = Array.from({ length: 3 }, () => Promise.withResolvers<void>())
-  let turn = 0
+export default defineScript({
+  async run({ artifacts, llm, ui }) {
+    const completed = Array.from({ length: 3 }, () => Promise.withResolvers<void>())
+    let turn = 0
 
-  await backend.attach(async (request) => {
-    if (isTitleRequest(request.body)) {
-      await backend.chunk(request.id, [{ type: "textDelta", text: "Stale exploring reproduction" }])
-      await backend.finish(request.id)
-      return
-    }
-    const current = turn++
-    if (current === 0) {
-      await backend.chunk(request.id, [
-        {
-          type: "toolCall",
+    llm.serve(async function* (request) {
+      if (isTitleRequest(request.body)) {
+        yield llm.text("Stale exploring reproduction")
+        return
+      }
+      const current = turn++
+      if (current === 0) {
+        yield llm.toolCall({
           index: 0,
           id: "call_read",
           name: "read",
           input: { filePath: join(artifacts, "files", "src", "garden.js") },
-        },
-      ])
-      await backend.finish(request.id, "tool-calls")
-      return
-    }
-    if (current === 1) {
-      await backend.finish(request.id, "tool-calls")
-      completed[0]?.resolve()
-      return
-    }
-    const response = current === 2 ? "The file exports a small greeting function." : "Confirmed again with no more tools."
-    await backend.chunk(request.id, [{ type: "textDelta", text: response }])
-    await backend.finish(request.id)
-    completed[current - 1]?.resolve()
-  })
+        })
+        yield llm.finish("tool-calls")
+        return
+      }
+      if (current === 1) {
+        yield llm.finish("tool-calls")
+        completed[0]?.resolve()
+        return
+      }
+      yield llm.text(
+        current === 2
+          ? "The file exports a small greeting function."
+          : "Confirmed again with no more tools.",
+      )
+      completed[current - 1]?.resolve()
+    })
 
-  const prompts = [
-    "Read src/garden.js, then tell me what it contains.",
-    "Now inspect that file one more time.",
-    "Finally, verify the same file again.",
-  ]
-  for (const [index, prompt] of prompts.entries()) {
-    if (index === 0) await ui.typeText(prompt)
-    else await typeSlowly(ui, prompt)
-    await ui.pressEnter()
-    await withTimeout(
-      completed[index]!.promise,
-      30_000,
-      `timed out waiting for empty continuation ${index + 1}`,
-    )
-    await waitForEditor(ui)
-    await Bun.sleep(500)
-    await ui.screenshot(`stale-exploring-${index + 1}`)
+    const prompts = [
+      "Read src/garden.js, then tell me what it contains.",
+      "Now inspect that file one more time.",
+      "Finally, verify the same file again.",
+    ]
+    for (const [index, prompt] of prompts.entries()) {
+      if (index === 0) await ui.type(prompt)
+      else await typeSlowly(ui, prompt)
+      await ui.enter()
+      await withTimeout(
+        completed[index]!.promise,
+        30_000,
+        `timed out waiting for empty continuation ${index + 1}`,
+      )
+      await waitForEditor(ui)
+      await Bun.sleep(500)
+      await ui.screenshot(`stale-exploring-${index + 1}`)
+    }
   }
 })
 
@@ -67,17 +68,17 @@ async function withTimeout(promise: Promise<void>, timeout: number, message: str
 }
 
 async function typeSlowly(
-  ui: Parameters<Parameters<typeof defineScript>[0]>[0]["ui"],
+  ui: ScriptUi,
   text: string,
 ) {
   for (const char of text) {
-    await ui.typeText(char)
+    await ui.type(char)
     await Bun.sleep(55)
   }
 }
 
 async function waitForEditor(
-  ui: Parameters<Parameters<typeof defineScript>[0]>[0]["ui"],
+  ui: ScriptUi,
 ) {
   const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {

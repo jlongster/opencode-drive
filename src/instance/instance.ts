@@ -2,7 +2,8 @@ import { mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { ensureMediaDirectory } from "./media.js"
-import type { DriveScriptSetup } from "../cli/script.js"
+import { createScriptFileSystem } from "../script/filesystem.js"
+import type { ScriptSetup } from "../script/types.js"
 
 export interface LaunchOptions {
   readonly artifacts: string
@@ -13,7 +14,7 @@ export interface LaunchOptions {
   readonly visible?: boolean
   readonly record?: boolean
   readonly env?: Readonly<Record<string, string>>
-  readonly setup?: DriveScriptSetup
+  readonly setup?: ScriptSetup
 }
 
 export function artifactDirectory() {
@@ -75,7 +76,7 @@ export async function launchInstance(options: LaunchOptions) {
       )}\n`,
     )
   await writeDriveManifest()
-  await options.setup?.({ directory: files })
+  await options.setup?.({ fs: createScriptFileSystem(files) })
   const environment = cleanEnv({
     ...process.env,
     ...options.env,

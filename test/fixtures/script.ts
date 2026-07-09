@@ -1,19 +1,24 @@
 import { join } from "node:path"
 import { defineScript } from "../../src/index.js"
-import type { ScriptSetupContext } from "../../src/index.js"
 
-export async function setup({ directory }: ScriptSetupContext) {
-  await Bun.write(join(directory, "src", "seeded.ts"), "export const seeded = true\n")
-}
+export default defineScript({
+  async setup({ fs }) {
+    await fs.writeFile("src/seeded.ts", "export const seeded = true\n")
+  },
 
-export default defineScript(async ({ artifacts, backend, ui }) => {
-  const attached = await backend.attach(() => {})
-  await ui.typeText("script-text")
-  const matches = await ui.matches("script-text")
-  await ui.screenshot("script-shot")
-  const state = await ui.state()
-  await Bun.write(
-    join(artifacts, "script-result.json"),
-    `${JSON.stringify({ focused: state.focused, attached, matches }, undefined, 2)}\n`,
-  )
+  async run({ artifacts, llm, ui }) {
+    const editor = await ui.getElement(1)
+    await ui.focus(editor)
+    await ui.click(editor)
+    await ui.submit("script-text")
+    await llm.send(llm.text("script response", { delay: 0, chunkSize: 3 }))
+    const matches = await ui.matches("script-text")
+    await ui.waitFor("script-text")
+    await ui.screenshot("script-shot")
+    const state = await ui.state()
+    await Bun.write(
+      join(artifacts, "script-result.json"),
+      `${JSON.stringify({ focused: state.focused, matches }, undefined, 2)}\n`,
+    )
+  },
 })
