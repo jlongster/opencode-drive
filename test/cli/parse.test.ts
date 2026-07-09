@@ -9,6 +9,8 @@ describe("drive CLI parser", () => {
         "--command.ui.type",
         '{"text":"hello"}',
         "--command.ui.screenshot",
+        "--command.ui.matches",
+        '{"text":"hello"}',
         "--command.ui.state",
       ]),
     ).toEqual({
@@ -17,6 +19,7 @@ describe("drive CLI parser", () => {
       commands: [
         { operation: "ui.type", value: '{"text":"hello"}' },
         { operation: "ui.screenshot" },
+        { operation: "ui.matches", value: '{"text":"hello"}' },
         { operation: "ui.state" },
       ],
     })

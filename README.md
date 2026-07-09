@@ -34,7 +34,7 @@ If you are doing UI development in OpenCode, you might want to run it in a simul
 Run it in visible mode:
 
 ```sh
-opencode-drive start --name demo --visible --dev ~/projects/opencode
+opencode-drive start --visible --dev ~/projects/opencode
 ```
 
 Initialize first when you need to customize the isolated environment before OpenCode starts:

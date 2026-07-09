@@ -114,6 +114,9 @@ export namespace Frontend {
   export const RecordingFinish = Schema.String
   export type RecordingFinish = Schema.Schema.Type<typeof RecordingFinish>
 
+  export const Matches = Schema.Boolean
+  export type Matches = Schema.Schema.Type<typeof Matches>
+
   export const ScreenshotParams = Schema.Struct({
     name: Schema.optional(Schema.String),
   })
@@ -122,6 +125,9 @@ export namespace Frontend {
 
   export const TypeParams = Schema.Struct({ text: Schema.String })
   export interface TypeParams extends Schema.Schema.Type<typeof TypeParams> {}
+
+  export const MatchesParams = Schema.Struct({ text: Schema.String })
+  export interface MatchesParams extends Schema.Schema.Type<typeof MatchesParams> {}
 
   export const PressParams = Schema.Struct({
     key: Schema.String,
@@ -169,6 +175,11 @@ export namespace Frontend {
       ...JsonRpc.RequestFields,
       method: Schema.Literal("ui.click"),
       params: ClickParams,
+    }),
+    Schema.Struct({
+      ...JsonRpc.RequestFields,
+      method: Schema.Literal("ui.matches"),
+      params: MatchesParams,
     }),
     Schema.Struct({
       ...JsonRpc.RequestFields,

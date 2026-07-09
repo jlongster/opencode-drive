@@ -22,6 +22,10 @@ export const commandInfo = {
     value: false,
     description: "Return focus, elements, and available UI actions",
   },
+  "ui.matches": {
+    value: true,
+    description: "Check for literal screen text using JSON params",
+  },
   "ui.recording.finish": {
     value: false,
     description: "Finish recording and return the timeline path",
@@ -37,6 +41,7 @@ export function commandAcceptsValue(operation: string) {
   if (operation === "ui.click") return commandInfo[operation].value
   if (operation === "ui.screenshot") return commandInfo[operation].value
   if (operation === "ui.state") return commandInfo[operation].value
+  if (operation === "ui.matches") return commandInfo[operation].value
   if (operation === "ui.recording.finish") return commandInfo[operation].value
   throw new Error(`unknown drive command "${operation}"`)
 }
@@ -140,6 +145,16 @@ async function execute(
       return ui.screenshot()
     case "ui.state":
       return ui.state()
+    case "ui.matches": {
+      const request = Frontend.decodeRequest({
+        jsonrpc: "2.0",
+        method: "ui.matches",
+        params: json(required(command)),
+      })
+      if (request.method !== "ui.matches")
+        throw new Error("invalid ui.matches params")
+      return ui.matches(request.params.text)
+    }
     case "ui.recording.finish":
       return ui.finishRecording()
   }

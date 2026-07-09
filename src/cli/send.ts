@@ -1,6 +1,6 @@
 import { executeCommands } from "./commands.js"
 import type { SendOptions } from "./types.js"
-import { resolveInstance } from "./registry.js"
+import { resolveInstance } from "../instance/registry.js"
 
 export async function send(options: SendOptions) {
   if (options.commands.length === 0)
@@ -9,7 +9,7 @@ export async function send(options: SendOptions) {
   const result = await executeCommands(instance.endpoints.ui, options.commands)
   if (
     options.commands.length === 1 &&
-    ["ui.screenshot", "ui.recording.finish"].includes(
+    ["ui.screenshot", "ui.matches", "ui.recording.finish"].includes(
       options.commands[0]?.operation ?? "",
     )
   ) {

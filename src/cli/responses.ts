@@ -1,5 +1,5 @@
-import { requestResponses } from "./control.js"
-import { resolveInstance } from "./registry.js"
+import { requestResponses } from "../instance/control.js"
+import { resolveInstance } from "../instance/registry.js"
 
 export async function responses(options: {
   readonly name?: string

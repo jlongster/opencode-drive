@@ -1,4 +1,4 @@
-import { initializeInstance, launchInstance } from "./instance.js"
+import { initializeInstance, launchInstance } from "../instance/instance.js"
 import { mkdir, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { connectSimulation } from "../client/index.js"
@@ -7,7 +7,7 @@ import { connectMockBackend } from "./mock-backend.js"
 import { createResponseSettings } from "./response-generator.js"
 import { loadScript, runScript } from "./script.js"
 import type { DriveScript } from "./script.js"
-import { listenControl } from "./control.js"
+import { listenControl } from "../instance/control.js"
 import {
   controlPath,
   markReady,
@@ -17,7 +17,7 @@ import {
   registryDirectory,
   resolveInstance,
   unregister,
-} from "./registry.js"
+} from "../instance/registry.js"
 import type { StartOptions } from "./types.js"
 
 export async function start(options: StartOptions) {

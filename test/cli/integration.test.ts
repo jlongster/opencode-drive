@@ -8,7 +8,7 @@ import {
   manifestPath,
   register,
   unregister,
-} from "../../src/cli/registry.js"
+} from "../../src/instance/registry.js"
 import { createResponseSettings, generateResponse } from "../../src/cli/response-generator.js"
 import { splitText } from "../../src/cli/mock-backend.js"
 
@@ -25,7 +25,7 @@ afterEach(async () => {
 })
 
 describe("opencode-drive", () => {
-  test("requires an explicit name to initialize or start", async () => {
+  test("requires an explicit name to initialize or start headless", async () => {
     const root = await temporary()
     for (const command of ["init", "start"]) {
       const child = spawn([command], root)
@@ -48,6 +48,19 @@ describe("opencode-drive", () => {
     expect(await Bun.file(join(artifacts, "files", ".opencode", "opencode.jsonc")).exists()).toBe(
       true,
     )
+    expect(
+      await Bun.file(join(artifacts, "files", ".opencode", "opencode.jsonc")).json(),
+    ).toMatchObject({
+      model: "simulation/gpt-sim-model",
+      snapshots: false,
+      permissions: [{ action: "*", resource: "*", effect: "allow" }],
+      providers: {
+        simulation: {
+          package: "aisdk:@ai-sdk/openai-compatible",
+          models: { "gpt-sim-model": { capabilities: { tools: true } } },
+        },
+      },
+    })
     expect(await Bun.file(join(root, "registry", `${name}.json`)).json()).toMatchObject({
       name,
       artifacts,
@@ -107,6 +120,14 @@ describe("opencode-drive", () => {
     const state = spawn(["send", "--command.ui.state"], root)
     expect(await state.exited).toBe(0)
     expect(JSON.parse(await new Response(state.stdout).text()).focused.editor).toBe(true)
+
+    const matches = spawn(["send", "--command.ui.matches", '{"text":"Fake OpenCode"}'], root)
+    expect(await matches.exited).toBe(0)
+    expect(await new Response(matches.stdout).text()).toBe("true\n")
+
+    const literal = spawn(["send", "--command.ui.matches", '{"text":"Fake.*OpenCode"}'], root)
+    expect(await literal.exited).toBe(0)
+    expect(await new Response(literal.stdout).text()).toBe("false\n")
 
     const screenshot = spawn(["screenshot", "--name", name], root)
     expect(await screenshot.exited).toBe(0)
@@ -367,15 +388,12 @@ describe("opencode-drive", () => {
     )
   })
 
-  test("keeps visible instances in the foreground", async () => {
+  test("keeps unnamed visible instances in the foreground", async () => {
     const root = await temporary()
-    const name = "visible-test"
     const running = spawn(
       [
         "start",
         "--visible",
-        "--name",
-        name,
         "--",
         process.execPath,
         fixture("fake-opencode.ts"),
@@ -384,7 +402,9 @@ describe("opencode-drive", () => {
       root,
     )
     expect(await running.exited).toBe(0)
-    expect(await Bun.file(join(root, "registry", `${name}.json`)).exists()).toBe(false)
+    const listed = spawn(["list"], root)
+    expect(await listed.exited).toBe(0)
+    expect(await new Response(listed.stdout).text()).toBe("\n")
   })
 
   test("blocks and stops the instance after a script completes", async () => {
@@ -413,7 +433,7 @@ describe("opencode-drive", () => {
     expect(Date.now() - started).toBeLessThan(5_000)
     const artifacts = artifactPath(stderr)
     roots.push(artifacts)
-    expect(await Bun.file(join(artifacts, "script-result.json")).exists()).toBe(true)
+    expect(await Bun.file(join(artifacts, "script-result.json")).json()).toMatchObject({ matches: true })
     expect(await Bun.file(join(artifacts, "seeded-at-launch.txt")).text()).toBe(
       "export const seeded = true\n",
     )

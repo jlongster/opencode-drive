@@ -1,5 +1,5 @@
 import { join } from "node:path"
-import { resolveInstance } from "./registry.js"
+import { resolveInstance } from "../instance/registry.js"
 
 export async function logs(name?: string) {
   const manifest = await resolveInstance(name)

@@ -1,4 +1,4 @@
-import { listManifests, manifestPath } from "./registry.js"
+import { listManifests, manifestPath } from "../instance/registry.js"
 
 export async function list() {
   const instances = await listManifests()

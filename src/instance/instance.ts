@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { ensureMediaDirectory } from "./media.js"
-import type { DriveScriptSetup } from "./script.js"
+import type { DriveScriptSetup } from "../cli/script.js"
 
 export interface LaunchOptions {
   readonly artifacts: string
@@ -31,42 +31,14 @@ export async function initializeInstance() {
     mkdir(join(artifacts, "home", ".local", "state"), { recursive: true }),
   ])
   const files = join(artifacts, "files")
+  const defaultConfig = await Bun.file(new URL("./default-config.jsonc", import.meta.url)).text()
   await Promise.all([
     mkdir(join(files, ".git"), { recursive: true }),
     mkdir(join(files, ".opencode"), { recursive: true }),
     mkdir(join(files, "src"), { recursive: true }),
   ])
   await Promise.all([
-    Bun.write(
-      join(files, ".opencode", "opencode.jsonc"),
-      `${JSON.stringify(
-        {
-          model: "simulation/gpt-sim-model",
-          permissions: [{ action: "*", resource: "*", effect: "allow" }],
-          providers: {
-            simulation: {
-              name: "Simulation",
-              package: "aisdk:@ai-sdk/openai-compatible",
-              settings: { baseURL: "https://api.openai.com/v1" },
-              request: { body: { apiKey: "sim-key" } },
-              models: {
-                "gpt-sim-model": {
-                  name: "Simulated Model",
-                  capabilities: {
-                    tools: true,
-                    input: ["text"],
-                    output: ["text"],
-                  },
-                  limit: { context: 128000, output: 16000 },
-                },
-              },
-            },
-          },
-        },
-        undefined,
-        2,
-      )}\n`,
-    ),
+    Bun.write(join(files, ".opencode", "opencode.jsonc"), defaultConfig),
     Bun.write(
       join(files, "src", "garden.js"),
       "export function greet(name) {\n  return `Hello, ${name}.`\n}\n",

@@ -11,6 +11,10 @@ type Methods = {
     readonly params: undefined
     readonly result: Frontend.State
   }
+  readonly "ui.matches": {
+    readonly params: Frontend.MatchesParams
+    readonly result: Frontend.Matches
+  }
   readonly "ui.recording.finish": {
     readonly params: undefined
     readonly result: Frontend.RecordingFinish
@@ -182,6 +186,10 @@ export class SimulationClient {
   /** Current screen, focus, elements, and generated actions. */
   state(): Promise<Frontend.State> {
     return this.call("ui.state")
+  }
+
+  matches(text: string): Promise<Frontend.Matches> {
+    return this.call("ui.matches", { text })
   }
 
   async screenshot(name?: string): Promise<Frontend.Screenshot> {

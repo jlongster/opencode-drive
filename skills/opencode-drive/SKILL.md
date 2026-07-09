@@ -18,7 +18,7 @@ If the user is wanting to try to more deeply debug the app and try to reproduce 
 
 # Live interaction usage
 
-- Always give the instance a unique `--name`.
+- Always give headless instances a unique `--name`. Visible instances may omit it.
 - A normal headless `start` detaches automatically and returns after the instance is ready.
 - Do not add `&`; the long-running owner already runs in the background.
 - Configure simulated model responses after startup when needed.
@@ -64,6 +64,7 @@ Commands:
 - `--command.ui.focus <json>` focuses an element. Arguments: `target` is the numeric element `num` returned by `ui.state`.
 - `--command.ui.click <json>` clicks an element. Arguments: numeric `target`, `x`, and `y`; use the element `num` returned by `ui.state` as `target`.
 - `--command.ui.state` prints focus and interactive element metadata as JSON. Arguments: none.
+- `--command.ui.matches <json>` prints whether literal, case-sensitive text appears on screen. Arguments: `text` string.
 
 ```bash
 opencode-drive send --name demo \
@@ -81,6 +82,9 @@ opencode-drive send --name demo \
 
 opencode-drive send --name demo \
   --command.ui.click '{"target":12,"x":4,"y":1}'
+
+opencode-drive send --name demo \
+  --command.ui.matches '{"text":"OpenCode"}'
 ```
 
 To read the UI state and see information about interactable elements, use the `ui.state` command:
@@ -92,6 +96,7 @@ opencode-drive send --name demo --command.ui.state
 ## Inspect The UI
 
 - `ui.state` prints focus and interactive element metadata as JSON.
+- `ui.matches` checks for literal, case-sensitive screen text.
 - `screenshot` prints the generated image path.
 
 ```bash
@@ -171,6 +176,8 @@ export async function setup({ directory }: ScriptSetupContext) {
 
 export default defineScript(async ({ ui }) => {
   await ui.typeText("Open src/example.ts")
+  const visible = await ui.matches("Open src/example.ts")
+  if (!visible) throw new Error("prompt text is not visible")
 })
 ```
 

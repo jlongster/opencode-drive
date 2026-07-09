@@ -15,15 +15,19 @@ import { stop } from "./stop.js"
 import type { DriveCommand, SendOptions, StartOptions } from "./types.js"
 
 const extracted = extract()
-const startName = Flag.string("name").pipe(
+const initName = Flag.string("name").pipe(
   Flag.withDescription("Instance name"),
+)
+const startName = Flag.string("name").pipe(
+  Flag.optional,
+  Flag.withDescription("Instance name (optional with --visible)"),
 )
 const name = Flag.string("name").pipe(
   Flag.optional,
   Flag.withDescription("Instance name (inferred when exactly one is running)"),
 )
 
-const initCommand = Command.make("init", { name: startName }, (config) =>
+const initCommand = Command.make("init", { name: initName }, (config) =>
   execute(() => init(config.name)),
 ).pipe(
   Command.withDescription("Initialize an instance without launching OpenCode"),
@@ -65,7 +69,7 @@ const startCommand = Command.make(
       description: "Launch headless OpenCode on the default ports",
     },
     {
-      command: "opencode-drive start --name demo --visible",
+      command: "opencode-drive start --visible",
       description: "Launch visible OpenCode on the default ports",
     },
     {
@@ -161,7 +165,7 @@ Command.runWith(root, { version: packageJson.version })(extracted.args).pipe(
 function toStartOptions(
   config: {
     readonly script: Option.Option<string>
-    readonly name: string
+    readonly name: Option.Option<string>
     readonly daemon: boolean
     readonly visible: boolean
     readonly record: boolean
@@ -172,9 +176,12 @@ function toStartOptions(
 ): StartOptions {
   if (commands.length > 0)
     throw new Error("start does not accept command flags; use send or --script")
+  const name = Option.getOrUndefined(config.name)
+  if (name === undefined && !config.visible)
+    throw new Error("start requires --name unless --visible is passed")
   const options = {
     kind: "start" as const,
-    name: config.name,
+    name: name ?? `visible-${process.pid}`,
     daemon: config.daemon,
     script: Option.getOrUndefined(config.script),
     visible: config.visible,

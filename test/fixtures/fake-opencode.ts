@@ -115,6 +115,8 @@ function frontend(method: string, params: unknown) {
     if (!drive.recording) throw new Error("recording is not enabled")
     return drive.recording.timeline
   }
+  if (method === "ui.matches" && isRecord(params) && typeof params.text === "string")
+    return screen.value.includes(params.text)
   if (
     method === "ui.type" &&
     isRecord(params) &&

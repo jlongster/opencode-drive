@@ -1,5 +1,5 @@
-import { requestStop } from "./control.js"
-import { manifestPath, resolveInstance } from "./registry.js"
+import { requestStop } from "../instance/control.js"
+import { manifestPath, resolveInstance } from "../instance/registry.js"
 
 export async function stop(name?: string) {
   const manifest = await resolveInstance(name)

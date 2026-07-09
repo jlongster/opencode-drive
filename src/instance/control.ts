@@ -3,7 +3,7 @@ import { connect, createServer } from "node:net"
 import type {
   ResponseConfiguration,
   ResponseUpdate,
-} from "./response-generator.js"
+} from "../cli/response-generator.js"
 
 export interface StopResult {
   readonly recording?: string
