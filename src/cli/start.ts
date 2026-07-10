@@ -9,7 +9,7 @@ import { loadScript, runScript } from "./script.js"
 import type { ScriptDefinition } from "../script/types.js"
 import { prepareScriptTooling } from "../script/tooling.js"
 import { listenControl } from "../instance/control.js"
-import { configureLogFile, logError, logSuccess } from "../log.js"
+import { configureLogFile, logError, logReadyPaths, logSuccess } from "../log.js"
 import {
   controlPath,
   markReady,
@@ -160,6 +160,7 @@ export async function start(options: StartOptions) {
           await current.ready
           driveReady = true
           await markReady(options.name, process.pid)
+          await logReadyPaths(instance.artifacts)
           return output
         })().finally(() => {
           restarting = undefined
@@ -185,6 +186,7 @@ export async function start(options: StartOptions) {
     driveReady = true
     logSuccess(`ready ${options.name}`)
     await markReady(options.name, process.pid)
+    await logReadyPaths(instance.artifacts)
     if (options.visible) {
       while (true) {
         const active: NonNullable<typeof current> = current
@@ -345,6 +347,7 @@ async function startDetached(options: StartOptions, artifacts: string) {
     const manifest = await resolveInstance(options.name).catch(() => undefined)
     if (manifest?.pid === child.pid) {
       logSuccess(`ready ${options.name}`)
+      await logReadyPaths(manifest.artifacts)
       return
     }
     if (child.exitCode !== null)

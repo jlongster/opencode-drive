@@ -1,4 +1,5 @@
 import { appendFileSync, mkdirSync } from "node:fs"
+import { readdir } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
 const prefix = "opencode-drive"
@@ -6,6 +7,25 @@ let currentLogFile = process.env.OPENCODE_DRIVE_LOG
 
 export function driveLogFile(artifacts: string) {
   return join(artifacts, "logs", "opencode-drive.log")
+}
+
+export async function opencodeLogFile(artifacts: string) {
+  const directory = join(artifacts, "logs", "opencode", "log")
+  const pattern = join(directory, "opencode*.log")
+  try {
+    const matches = (await readdir(directory))
+      .filter((entry) => /^opencode.*\.log$/.test(entry))
+      .sort()
+      .map((entry) => join(directory, entry))
+    return matches.at(-1) ?? pattern
+  } catch {
+    return pattern
+  }
+}
+
+export async function logReadyPaths(artifacts: string) {
+  logSuccess(`opencode instance logs: ${await opencodeLogFile(artifacts)}`)
+  logSuccess(`current run script logs: ${driveLogFile(artifacts)}`)
 }
 
 export function configureLogFile(artifacts: string) {

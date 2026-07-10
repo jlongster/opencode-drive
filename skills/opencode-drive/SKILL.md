@@ -136,17 +136,13 @@ opencode-drive responses --name demo \
   --tools read,glob,grep
 ```
 
-## Logs
+## Artifacts
 
-- `logs` prints two log files:
-
-* opencode*.log: OpenCode log file (with a channel-specific suffix). Look here
-  if you are debugging OpenCode's behavior.
-* opencode-drive.log: logs details specific to this run. in script mode, logs
-  all the commands that run
+- `dir` prints the artifact directory for the instance. Startup logs include the
+  OpenCode `opencode*.log` path and the current `opencode-drive.log` path.
 
 ```bash
-opencode-drive logs --name demo
+opencode-drive dir --name demo
 ```
 
 ## Lifecycle
@@ -161,22 +157,29 @@ opencode-drive prune
 
 # Scripted usage
 
-Write a script and pass it with `--script`:
+You can write scripts that walk through entire flows, and gives you full access to controlling
+the backend too. See examples of the script API at the bottom of this file.
 
-```bash
-opencode-drive start --name auto-stop-reproduction --script ./reproduce-stale-exploring-empty.ts
-```
-
-After creating or editing a script, always type-check it before starting:
+After creating or editing a script, always typecheck it before running. Never skip this step:
 
 ```bash
 opencode-drive check ./reproduce-stale-exploring-empty.ts
 ```
 
-Do not skip this step.
+Run it by passing `--script` to start:
+
+```bash
+opencode-drive start --name auto-stop-reproduction --script ./reproduce-stale-exploring-empty.ts
+```
+
+It will output information about the run, including paths to log files which you can read
+to inspect what happened. If you need to dig into failures that aren't clear, read those log
+files. If the script is unsuccessful, automatically fix the script and run it again.
 
 Scripts use one typed definition object. `setup` runs before OpenCode starts,
-and `fs.writeFile` always writes inside the simulated project:
+and `fs.writeFile` always writes inside the simulated project.
+
+You can read the full typed API here: https://raw.githubusercontent.com/jlongster/opencode-drive/refs/heads/main/src/script/types.ts
 
 ```ts
 import { defineScript } from "opencode-drive"
@@ -207,41 +210,20 @@ Use `launch: "manual"` when the script needs to launch the server and every TUI
 itself (this is extremely rare, do not use this unless explicitly asked). In this
 mode `ui` is typed as `null`; call `server.launch()` exactly
 once before launching clients. Each `clients.launch(name)` result provides the
-same UI methods as the automatic client:
-
-```ts
-import { defineScript } from "opencode-drive"
-
-export default defineScript({
-  launch: "manual",
-  async run({ ui, server, clients }) {
-    await server.launch()
-    const first = await clients.launch("first")
-    const second = await clients.launch("second")
-    await first.submit("Create a session")
-    await second.screenshot("second-client")
-  },
-})
-```
+same UI methods as the automatic client. You can see an example of this API
+here: https://raw.githubusercontent.com/jlongster/opencode-drive/refs/heads/main/examples/multiple-clients.ts
 
 Use the exported `wait(milliseconds)` utility for an unconditional delay.
-Use `await server.kill()` to stop and later relaunch the shared server. Use
-`await ui.kill()` to terminate an individual client; its name can then be
-passed to `clients.launch()` again.
-Pass `{ record: true }` to `clients.launch(name, options)` to record that
-client. `ui.kill()` exports and returns its video path before terminating it;
-active recorded clients are exported automatically when the script ends.
-Background title requests are answered automatically and do not consume normal
-LLM responses. In manual-launch scripts, call `llm.title(handler)` before
-`server.launch()` to customize title generation.
 
 `await llm.send(...)` waits for the next request and resolves after OpenCode
 acknowledges its complete response. `llm.queue(...)` declares responses in
 advance. Chunks may be built with `text`, `reasoning`, `toolCall`, `raw`,
 `finish`, and `disconnect`. A normal response receives `finish("stop")`
 automatically unless it yields or queues an explicit terminal event.
+
 `llm.text(text, { delay, chunkSize })` defaults to a 2 ms delay and a
 15-character target varied by plus or minus 5 per chunk.
+
 `llm.reasoning` accepts the same options, and `llm.pause(milliseconds)` adds a
 delay between any two outputs.
 
@@ -256,8 +238,7 @@ llm.serve(async function* (request, index) {
 ```
 
 The backend connection, response cleanup, cancellation, and recording
-completion are automatic. The complete authoring contract is in
-`src/script/types.ts`.
+completion are automatic.
 
 You can see some example scripts here:
 

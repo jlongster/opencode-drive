@@ -5,9 +5,9 @@ import { Argument, Command, Flag } from "effect/unstable/cli"
 import packageJson from "../../package.json" with { type: "json" }
 import { extractCommands } from "./parse.js"
 import { check } from "./check.js"
+import { dir } from "./dir.js"
 import { init } from "./init.js"
 import { list } from "./list.js"
-import { logs } from "./logs.js"
 import { prune } from "./prune.js"
 import { restart } from "./restart.js"
 import { responses } from "./responses.js"
@@ -128,9 +128,9 @@ const stopCommand = Command.make("stop", { name }, (config) =>
   execute(() => stop(Option.getOrUndefined(config.name))),
 ).pipe(Command.withDescription("Stop a named OpenCode instance"))
 
-const logsCommand = Command.make("logs", { name }, (config) =>
-  execute(() => logs(Option.getOrUndefined(config.name))),
-).pipe(Command.withDescription("List log files for a named OpenCode instance"))
+const dirCommand = Command.make("dir", { name }, (config) =>
+  execute(() => dir(Option.getOrUndefined(config.name))),
+).pipe(Command.withDescription("Print the artifact directory for a named OpenCode instance"))
 
 const listCommand = Command.make("list", {}, () => execute(list)).pipe(
   Command.withDescription("List active OpenCode instances"),
@@ -174,7 +174,7 @@ const root = Command.make("opencode-drive").pipe(
     listCommand,
     pruneCommand,
     responsesCommand,
-    logsCommand,
+    dirCommand,
     restartCommand,
     stopCommand,
   ]),

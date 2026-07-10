@@ -97,7 +97,7 @@ describe("opencode-drive", () => {
     })
   })
 
-  test("starts, drives, lists logs, restarts, and stops a named detached instance", async () => {
+  test("starts, drives, prints dir, restarts, and stops a named detached instance", async () => {
     const root = await temporary()
     const name = "detached-test"
     const started = spawn(
@@ -110,6 +110,13 @@ describe("opencode-drive", () => {
     ])
     expect(startStatus).toBe(0)
     expect(startError).toContain("opencode-drive: using artifacts ")
+    const startArtifacts = artifactPath(startError)
+    expect(startError).toContain(
+      `opencode-drive: opencode instance logs: ${join(startArtifacts, "logs", "opencode", "log", "opencode*.log")}`,
+    )
+    expect(startError).toContain(
+      `opencode-drive: current run script logs: ${join(startArtifacts, "logs", "opencode-drive.log")}`,
+    )
     expect(startError).not.toContain(`opencode-drive: ${name}`)
     instances.push({ root, name })
 
@@ -176,16 +183,16 @@ describe("opencode-drive", () => {
     expect(await invalid.exited).toBe(1)
     expect(await new Response(invalid.stderr).text()).toContain("unknown response types: unknown")
 
-    const listed = spawn(["logs", "--name", name], root)
+    const listed = spawn(["dir", "--name", name], root)
     expect(await listed.exited).toBe(0)
-    const logOutput = await new Response(listed.stdout).text()
+    expect(await new Response(listed.stdout).text()).toBe(`${manifest.artifacts}\n`)
     const driveLog = join(manifest.artifacts, "logs", "opencode-drive.log")
-    expect(logOutput).toBe(
-      `${join(manifest.artifacts, "logs", "opencode", "log", "opencode*.log")}\n${driveLog}\n`,
-    )
-    expect(logOutput).not.toContain("INFO starting detached-test")
     const driveLogText = await Bun.file(driveLog).text()
     expect(driveLogText).toContain("INFO ready detached-test")
+    expect(driveLogText).toContain(
+      `INFO opencode instance logs: ${join(manifest.artifacts, "logs", "opencode", "log", "opencode*.log")}`,
+    )
+    expect(driveLogText).toContain(`INFO current run script logs: ${driveLog}`)
     expect(driveLogText).toContain("INFO ui command ui.state params=undefined")
     expect(driveLogText).toContain(
       'INFO ui command ui.matches params={"text":"Fake OpenCode"}',
@@ -465,7 +472,7 @@ describe("opencode-drive", () => {
 
   test("reports optional-name discovery errors", async () => {
     const root = await temporary()
-    const missing = spawn(["logs"], root)
+    const missing = spawn(["dir"], root)
     expect(await missing.exited).toBe(1)
     expect(await new Response(missing.stderr).text()).toContain("no drive instances are running")
   })
@@ -488,7 +495,7 @@ describe("opencode-drive", () => {
     expect(await spawn(["send", "--name", "first", "--command.ui.state"], root).exited).toBe(0)
     expect(await spawn(["send", "--name", "second", "--command.ui.state"], root).exited).toBe(0)
 
-    const unnamed = spawn(["logs"], root)
+    const unnamed = spawn(["dir"], root)
     const [status, stderr] = await Promise.all([
       unnamed.exited,
       new Response(unnamed.stderr).text(),
