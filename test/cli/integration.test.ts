@@ -178,8 +178,17 @@ describe("opencode-drive", () => {
 
     const listed = spawn(["logs", "--name", name], root)
     expect(await listed.exited).toBe(0)
-    expect(await new Response(listed.stdout).text()).toBe(
-      `${join(manifest.artifacts, "logs", "opencode", "log", "opencode*.log")}\n`,
+    const logOutput = await new Response(listed.stdout).text()
+    const driveLog = join(manifest.artifacts, "logs", "opencode-drive.log")
+    expect(logOutput).toBe(
+      `${join(manifest.artifacts, "logs", "opencode", "log", "opencode*.log")}\n${driveLog}\n`,
+    )
+    expect(logOutput).not.toContain("INFO starting detached-test")
+    const driveLogText = await Bun.file(driveLog).text()
+    expect(driveLogText).toContain("INFO ready detached-test")
+    expect(driveLogText).toContain("INFO ui command ui.state params=undefined")
+    expect(driveLogText).toContain(
+      'INFO ui command ui.matches params={"text":"Fake OpenCode"}',
     )
 
     const restarted = spawn(["restart", "--name", name], root)
@@ -630,6 +639,35 @@ describe("opencode-drive", () => {
     expect(running(pid)).toBe(false)
     expect(await Bun.file(join(root, "registry", `${name}.json`)).exists()).toBe(false)
   })
+
+  test("aborts the script run when a UI wait times out even if the script catches it", async () => {
+    const root = await temporary()
+    const name = "caught-timeout-test"
+    const child = spawn(
+      [
+        "start",
+        "--name",
+        name,
+        "--script",
+        fixture("caught-timeout-script.ts"),
+        "--",
+        process.execPath,
+        fixture("fake-opencode.ts"),
+      ],
+      root,
+    )
+    const [status, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stderr).text(),
+    ])
+    expect(status).toBe(1)
+    const artifacts = artifactPath(stderr)
+    roots.push(artifacts)
+    expect(stderr).toContain(
+      'timed out waiting for the UI to match "this text never appears"',
+    )
+    expect(await Bun.file(join(root, "registry", `${name}.json`)).exists()).toBe(false)
+  }, 10_000)
 
   test("checks a typed script and removes temporary dependency links", async () => {
     const root = await temporary()

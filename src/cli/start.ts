@@ -9,7 +9,7 @@ import { loadScript, runScript } from "./script.js"
 import type { ScriptDefinition } from "../script/types.js"
 import { prepareScriptTooling } from "../script/tooling.js"
 import { listenControl } from "../instance/control.js"
-import { logSuccess } from "./log.js"
+import { configureLogFile, logError, logSuccess } from "../log.js"
 import {
   controlPath,
   markReady,
@@ -23,12 +23,14 @@ import {
 import type { StartOptions } from "./types.js"
 
 export async function start(options: StartOptions) {
-  logSuccess(`starting ${options.name}`)
   const initialized = await initializeManifest(options.name, process.cwd(), initializeInstance, {
     temporary: true,
   })
+  configureLogFile(initialized.artifacts)
+  logSuccess(`starting ${options.name}`)
   logSuccess(`using artifacts ${initialized.artifacts}`)
-  if (!options.visible && !options.script && !options.daemon) return startDetached(options)
+  if (!options.visible && !options.script && !options.daemon)
+    return startDetached(options, initialized.artifacts)
   const scriptPath = options.script
   const scriptTooling = scriptPath
     ? await (async () => {
@@ -105,7 +107,7 @@ export async function start(options: StartOptions) {
     current?.abort.abort(new Error("opencode-drive interrupted"))
     void finishCurrentRecording()
       .catch((error) =>
-        process.stderr.write(`opencode-drive: failed to export recording: ${error}\n`),
+        logError(`failed to export recording: ${error}`),
       )
       .finally(() => instance.stop())
   }
@@ -130,6 +132,7 @@ export async function start(options: StartOptions) {
     for (const screenshot of result.screenshots) console.log(screenshot)
   }
   let closeControl: (() => Promise<void>) | undefined
+  let failure: unknown
   try {
     closeControl = await listenControl(controlPath(options.name), {
       restart: () => {
@@ -237,12 +240,15 @@ export async function start(options: StartOptions) {
       completed = true
       break
     }
+  } catch (error) {
+    failure = error
+    throw error
   } finally {
     process.off("SIGINT", interrupt)
     process.off("SIGTERM", interrupt)
     current?.abort.abort(new Error("opencode-drive stopped"))
     const recordingPath = await finishCurrentRecording().catch((error) => {
-      process.stderr.write(`opencode-drive: failed to export recording: ${error}\n`)
+      logError(`failed to export recording: ${error}`)
       return undefined
     })
     await closeControl?.()
@@ -250,10 +256,12 @@ export async function start(options: StartOptions) {
     await unregister(options.name, process.pid)
     await scriptTooling?.links.remove()
     if (options.script && !options.visible) report(completed ? "completed" : undefined)
-    if (options.script && recordingPath) console.error(`opencode-drive: recording ${recordingPath}`)
+    if (options.script && recordingPath) logSuccess(`recording ${recordingPath}`)
     if (options.script)
       for (const output of recordings)
-        console.error(`opencode-drive: recording ${output}`)
+        logSuccess(`recording ${output}`)
+    if (options.script && isTimeoutError(failure))
+      setTimeout(() => process.exit(1), 0)
   }
 }
 
@@ -285,7 +293,7 @@ async function finishRecording(
   return expected.video
 }
 
-async function startDetached(options: StartOptions) {
+async function startDetached(options: StartOptions, artifacts: string) {
   const existing = await resolveInstance(options.name, { ready: false }).catch(() => undefined)
   if (existing) throw new Error(`drive instance "${options.name}" is already running`)
   const ownerLog = join(registryDirectory(), `${options.name}.log`)
@@ -307,7 +315,7 @@ async function startDetached(options: StartOptions) {
     ],
     {
       cwd: process.cwd(),
-      env: process.env,
+      env: { ...process.env, OPENCODE_DRIVE_LOG: configureLogFile(artifacts) },
       stdin: "ignore",
       stdout: "ignore",
       stderr: Bun.file(ownerLog),
@@ -406,5 +414,10 @@ function run(
 }
 
 function report(status?: string) {
-  if (status) console.error(`opencode-drive: ${status}`)
+  if (status) logSuccess(status)
+}
+
+function isTimeoutError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  return /\btimeout\b|\btimed out\b/i.test(message)
 }

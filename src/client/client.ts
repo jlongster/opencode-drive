@@ -1,4 +1,5 @@
 import { Frontend, type JsonRpc } from "./protocol.js"
+import { recordLog } from "../log.js"
 
 const defaultPort = 40900
 
@@ -160,6 +161,7 @@ export class SimulationClient {
     if (this.socket.readyState !== WebSocket.OPEN) {
       throw new SimulationError("connection is not open", method)
     }
+    recordLog("INFO", `ui command ${method} params=${formatParams(params)}`)
     const id = this.nextId++
     const promise = new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -178,7 +180,17 @@ export class SimulationClient {
     )
     // The server contract types each method's result; the cast happens once
     // here rather than at every call site.
-    return (await promise) as Methods[M]["result"]
+    try {
+      const result = await promise
+      recordLog("INFO", `ui command ${method} completed`)
+      return result as Methods[M]["result"]
+    } catch (error) {
+      recordLog(
+        "ERROR",
+        `ui command ${method} failed: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      throw error
+    }
   }
 
   // ── ui ────────────────────────────────────────────────────────────────
@@ -309,6 +321,15 @@ function open(url: string): Promise<WebSocket> {
     socket.addEventListener("open", onOpen)
     socket.addEventListener("error", onError)
   })
+}
+
+function formatParams(value: unknown) {
+  if (value === undefined) return "undefined"
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return "[unserializable]"
+  }
 }
 
 export const connectSimulation = (

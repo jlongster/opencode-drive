@@ -1,4 +1,5 @@
 import { Backend, type JsonRpc } from "./protocol.js"
+import { logError } from "../log.js"
 
 const defaultBackendPort = 40950
 
@@ -143,10 +144,7 @@ export class BackendSimulationClient {
   ) {
     this.llmRequests.add((request) => {
       void Promise.resolve(onRequest(request)).catch((error) => {
-        if (!this.closing)
-          console.error(
-            `error: ${error instanceof Error ? error.message : String(error)}`,
-          )
+        if (!this.closing) logError(error instanceof Error ? error.message : String(error))
       })
     })
     return await this.call("llm.attach")

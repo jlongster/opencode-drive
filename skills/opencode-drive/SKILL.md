@@ -138,7 +138,12 @@ opencode-drive responses --name demo \
 
 ## Logs
 
-- `logs` prints the OpenCode log file for the instance
+- `logs` prints two log files:
+
+* opencode*.log: OpenCode log file (with a channel-specific suffix). Look here
+  if you are debugging OpenCode's behavior.
+* opencode-drive.log: logs details specific to this run. in script mode, logs
+  all the commands that run
 
 ```bash
 opencode-drive logs --name demo

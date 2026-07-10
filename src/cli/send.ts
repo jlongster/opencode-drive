@@ -2,6 +2,7 @@ import { executeCommands } from "./commands.js"
 import type { SendOptions } from "./types.js"
 import { defaultPort } from "../client/index.js"
 import { resolveInstance, resolveVisibleInstance } from "../instance/registry.js"
+import { configureLogFile } from "../log.js"
 
 export async function send(options: SendOptions) {
   if (options.commands.length === 0)
@@ -29,8 +30,15 @@ export async function send(options: SendOptions) {
 }
 
 export async function resolveSendEndpoint(name?: string) {
-  if (name) return (await resolveInstance(name)).endpoints.ui
-  return (
-    (await resolveVisibleInstance())?.endpoints.ui ?? `ws://127.0.0.1:${defaultPort}`
-  )
+  if (name) {
+    const manifest = await resolveInstance(name)
+    configureLogFile(manifest.artifacts)
+    return manifest.endpoints.ui
+  }
+  const manifest = await resolveVisibleInstance()
+  if (manifest) {
+    configureLogFile(manifest.artifacts)
+    return manifest.endpoints.ui
+  }
+  return `ws://127.0.0.1:${defaultPort}`
 }

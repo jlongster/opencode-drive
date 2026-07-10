@@ -14,6 +14,7 @@ import { responses } from "./responses.js"
 import { send } from "./send.js"
 import { start } from "./start.js"
 import { stop } from "./stop.js"
+import { logError } from "../log.js"
 import type { DriveCommand, SendOptions, StartOptions } from "./types.js"
 
 const extracted = extract()
@@ -229,7 +230,7 @@ function execute(task: () => Promise<void>) {
   return Effect.tryPromise({ try: task, catch: (error) => error }).pipe(
     Effect.catch((error) =>
       Effect.sync(() => {
-        console.error(`error: ${error instanceof Error ? error.message : String(error)}`)
+        logError(error instanceof Error ? error.message : String(error))
         process.exitCode = 1
       }),
     ),
@@ -240,7 +241,7 @@ function extract() {
   try {
     return extractCommands(process.argv.slice(2))
   } catch (error) {
-    console.error(`opencode-drive: ${error instanceof Error ? error.message : String(error)}`)
+    logError(error instanceof Error ? error.message : String(error))
     return process.exit(1)
   }
 }

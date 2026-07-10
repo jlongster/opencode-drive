@@ -1,10 +1,12 @@
 import { requestStop } from "../instance/control.js"
 import { manifestPath, resolveInstance } from "../instance/registry.js"
+import { configureLogFile, logSuccess } from "../log.js"
 
 export async function stop(name?: string) {
   const manifest = await resolveInstance(name)
+  configureLogFile(manifest.artifacts)
   const result = await requestStop(manifest.control, (percent) => {
-    console.error(`Rendering video: ${percent}%`)
+    logSuccess(`Rendering video: ${percent}%`)
   })
   const deadline = Date.now() + 5 * 60_000
   while (Date.now() < deadline) {
@@ -19,7 +21,7 @@ export async function stop(name?: string) {
     ) {
       for (const screenshot of result.screenshots) console.log(screenshot)
       if (result.recording) {
-        console.error(`Video successfully created: ${result.recording}`)
+        logSuccess(`Video successfully created: ${result.recording}`)
       } else if (result.screenshots.length === 0) {
         console.log("success")
       }
