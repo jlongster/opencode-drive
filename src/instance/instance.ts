@@ -15,6 +15,7 @@ export interface LaunchOptions {
   readonly record?: boolean
   readonly env?: Readonly<Record<string, string>>
   readonly setup?: ScriptSetup
+  readonly log?: (message: string) => void
 }
 
 export function artifactDirectory() {
@@ -133,6 +134,7 @@ export async function launchInstance(options: LaunchOptions) {
   let serverStopping = false
   if (!options.scripted) {
     await writeDriveManifest()
+    options.log?.("launching OpenCode")
     child = spawn()
   }
   let stopping: Promise<void> | undefined
@@ -154,6 +156,7 @@ export async function launchInstance(options: LaunchOptions) {
         throw new Error("the script server has already been launched")
       serverStarting = true
       try {
+        options.log?.("launching script server")
         await writeDriveManifest(serviceName, {
           ui: `ws://127.0.0.1:${await freePort()}`,
           backend: endpoints.backend,
@@ -174,6 +177,7 @@ export async function launchInstance(options: LaunchOptions) {
           throw error
         })
         serverStarted = true
+        options.log?.("script server ready")
         return { endpoints: { backend: endpoints.backend } }
       } finally {
         serverStarting = false
@@ -185,6 +189,7 @@ export async function launchInstance(options: LaunchOptions) {
         throw new Error("the script server is not running")
       serverStopping = true
       try {
+        options.log?.("stopping script server")
         await terminate(serverChild!)
         serverChild = undefined
         serverStarted = false
@@ -207,6 +212,7 @@ export async function launchInstance(options: LaunchOptions) {
       const primary = clients.size === 0 && launching.size === 0
       launching.add(clientName)
       try {
+        options.log?.(`launching client ${clientName}`)
         const clientEndpoints = {
           ui: primary ? endpoints.ui : `ws://127.0.0.1:${await freePort()}`,
           backend: endpoints.backend,
@@ -225,6 +231,7 @@ export async function launchInstance(options: LaunchOptions) {
         })
         if (primary) child = launched
         await waitForWebSocket(clientEndpoints.ui, launched.exited, 60_000)
+        options.log?.(`client ${clientName} ready`)
         return {
           endpoints: clientEndpoints,
           child: launched,
@@ -255,6 +262,7 @@ export async function launchInstance(options: LaunchOptions) {
     async restart() {
       if (restarting) return restarting
       restarting = (async () => {
+        options.log?.("restarting OpenCode")
         if (options.scripted) {
           await Promise.all([...clients.values()].map(terminate))
           clients.clear()
@@ -270,11 +278,13 @@ export async function launchInstance(options: LaunchOptions) {
         recording = options.record ? recordingPaths(media) : undefined
         if (!options.scripted) {
           await writeDriveManifest()
+          options.log?.("launching OpenCode")
           child = spawn()
           await Promise.all([
             waitForWebSocket(endpoints.ui, child.exited, 60_000),
             waitForWebSocket(endpoints.backend, child.exited, 60_000),
           ])
+          options.log?.("OpenCode ready")
         }
       })().finally(() => {
         restarting = undefined
@@ -296,6 +306,7 @@ export async function launchInstance(options: LaunchOptions) {
     stop() {
       if (stopping) return stopping
       stopping = (async () => {
+        options.log?.("stopping OpenCode")
         if (restarting) await restarting.catch(() => undefined)
         await Promise.all([...clients.values()].map(terminate))
         if (!options.scripted) await terminate(this.child)

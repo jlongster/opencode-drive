@@ -87,7 +87,7 @@ describe("opencode-drive", () => {
       new Response(started.stderr).text(),
     ])
     expect(startStatus).toBe(0)
-    expect(startError).toContain(`opencode-drive: artifacts ${artifacts}`)
+    expect(startError).toContain(`opencode-drive: using artifacts ${artifacts}`)
     instances.push({ root, name })
     expect(await Bun.file(join(artifacts, "prepared.txt")).text()).toBe("prepared before start\n")
     expect(await Bun.file(join(root, "registry", `${name}.json`)).json()).toMatchObject({
@@ -109,7 +109,7 @@ describe("opencode-drive", () => {
       new Response(started.stderr).text(),
     ])
     expect(startStatus).toBe(0)
-    expect(startError).toContain("opencode-drive: artifacts ")
+    expect(startError).toContain("opencode-drive: using artifacts ")
     expect(startError).not.toContain(`opencode-drive: ${name}`)
     instances.push({ root, name })
 
@@ -238,7 +238,7 @@ describe("opencode-drive", () => {
       new Response(started.stderr).text(),
     ])
     expect(status).toBe(0)
-    const artifacts = stderr.match(/opencode-drive: artifacts (.+)/)?.[1]
+    const artifacts = stderr.match(/opencode-drive: using artifacts (.+)/)?.[1]
     expect(artifacts).toBeDefined()
     roots.push(artifacts!)
 
@@ -1150,9 +1150,9 @@ async function waitForMissing(file: string) {
 }
 
 function artifactPath(stderr: string) {
-  const line = stderr.split("\n").find((value) => value.startsWith("opencode-drive: artifacts "))
+  const line = stderr.split("\n").find((value) => value.startsWith("opencode-drive: using artifacts "))
   if (!line) throw new Error("artifact path was not reported")
-  return line.slice("opencode-drive: artifacts ".length)
+  return line.slice("opencode-drive: using artifacts ".length)
 }
 
 function running(pid: number) {

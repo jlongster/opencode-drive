@@ -9,6 +9,7 @@ import { loadScript, runScript } from "./script.js"
 import type { ScriptDefinition } from "../script/types.js"
 import { prepareScriptTooling } from "../script/tooling.js"
 import { listenControl } from "../instance/control.js"
+import { logSuccess } from "./log.js"
 import {
   controlPath,
   markReady,
@@ -22,15 +23,24 @@ import {
 import type { StartOptions } from "./types.js"
 
 export async function start(options: StartOptions) {
+  logSuccess(`starting ${options.name}`)
   const initialized = await initializeManifest(options.name, process.cwd(), initializeInstance, {
     temporary: true,
   })
+  logSuccess(`using artifacts ${initialized.artifacts}`)
   if (!options.visible && !options.script && !options.daemon) return startDetached(options)
-  const scriptTooling = options.script
-    ? await prepareScriptTooling(initialized.artifacts, options.script)
+  const scriptPath = options.script
+  const scriptTooling = scriptPath
+    ? await (async () => {
+        logSuccess(`preparing script ${scriptPath}`)
+        return prepareScriptTooling(initialized.artifacts, scriptPath)
+      })()
     : undefined
   const script = scriptTooling
-    ? await loadScript(scriptTooling.file).catch(async (error) => {
+    ? await (async () => {
+        logSuccess(`loading script ${scriptTooling.file}`)
+        return loadScript(scriptTooling.file)
+      })().catch(async (error) => {
         await scriptTooling.links.remove()
         throw error
       })
@@ -40,6 +50,7 @@ export async function start(options: StartOptions) {
     throw new Error("--record is not supported when launch is manual")
   }
   const responses = createResponseSettings()
+  logSuccess("launching instance")
   const instance = await launchInstance({
     artifacts: initialized.artifacts,
     name: options.name,
@@ -49,6 +60,7 @@ export async function start(options: StartOptions) {
     visible: options.visible,
     record: options.record,
     setup: script?.setup,
+    log: logSuccess,
   }).catch(async (error) => {
     await scriptTooling?.links.remove()
     throw error
@@ -165,6 +177,7 @@ export async function start(options: StartOptions) {
     )
     await current.ready
     driveReady = true
+    logSuccess(`ready ${options.name}`)
     await markReady(options.name, process.pid)
     if (options.visible) {
       while (true) {
@@ -236,7 +249,7 @@ export async function start(options: StartOptions) {
     await instance.stop()
     await unregister(options.name, process.pid)
     await scriptTooling?.links.remove()
-    if (options.script && !options.visible) report(instance, completed ? "completed" : undefined)
+    if (options.script && !options.visible) report(completed ? "completed" : undefined)
     if (options.script && recordingPath) console.error(`opencode-drive: recording ${recordingPath}`)
     if (options.script)
       for (const output of recordings)
@@ -278,6 +291,7 @@ async function startDetached(options: StartOptions) {
   const ownerLog = join(registryDirectory(), `${options.name}.log`)
   await mkdir(registryDirectory(), { recursive: true })
   await rm(ownerLog, { force: true })
+  logSuccess(`launching detached owner for ${options.name}`)
   const child = Bun.spawn(
     [
       process.execPath,
@@ -300,14 +314,12 @@ async function startDetached(options: StartOptions) {
     },
   )
   child.unref()
+  logSuccess(`waiting for ${options.name} to become ready`)
   const deadline = Date.now() + 60_000
   while (Date.now() < deadline) {
     const manifest = await resolveInstance(options.name).catch(() => undefined)
     if (manifest?.pid === child.pid) {
-      report({
-        artifacts: manifest.artifacts,
-        logs: `${manifest.artifacts}/logs`,
-      })
+      logSuccess(`ready ${options.name}`)
       return
     }
     if (child.exitCode !== null)
@@ -344,8 +356,13 @@ function run(
     readiness.resolve()
   }
   const promise = (async () => {
-    if (!driveScript) await instance.waitForDrive("both")
+    if (!driveScript) {
+      logSuccess("waiting for OpenCode")
+      await instance.waitForDrive("both")
+      logSuccess("OpenCode ready")
+    }
     if (driveScript) {
+      logSuccess("running script")
       await runScript(
         driveScript,
         instance.artifacts,
@@ -358,6 +375,7 @@ function run(
         ready,
       )
       ready()
+      logSuccess("script completed")
       return
     }
     const child = instance.child
@@ -387,7 +405,6 @@ function run(
   }
 }
 
-function report(instance: { readonly artifacts: string; readonly logs: string }, status?: string) {
+function report(status?: string) {
   if (status) console.error(`opencode-drive: ${status}`)
-  console.error(`opencode-drive: artifacts ${instance.artifacts}`)
 }
