@@ -162,6 +162,14 @@ Write a script and pass it with `--script`:
 opencode-drive start --name auto-stop-reproduction --script ./reproduce-stale-exploring-empty.ts
 ```
 
+After creating or editing a script, always type-check it before starting:
+
+```bash
+opencode-drive check ./reproduce-stale-exploring-empty.ts
+```
+
+Do not skip this step.
+
 Scripts use one typed definition object. `setup` runs before OpenCode starts,
 and `fs.writeFile` always writes inside the simulated project:
 
@@ -180,6 +188,32 @@ export default defineScript({
   },
 })
 ```
+
+Use `launch: "manual"` when the script needs to launch the server and every TUI
+itself (this is extremely rare, do not use this unless explicitly asked). In this
+mode `ui` is typed as `null`; call `server.launch()` exactly
+once before launching clients. Each `clients.launch(name)` result provides the
+same UI methods as the automatic client:
+
+```ts
+import { defineScript } from "opencode-drive"
+
+export default defineScript({
+  launch: "manual",
+  async run({ ui, server, clients }) {
+    await server.launch()
+    const first = await clients.launch("first")
+    const second = await clients.launch("second")
+    await first.submit("Create a session")
+    await second.screenshot("second-client")
+  },
+})
+```
+
+Use the exported `wait(milliseconds)` utility for an unconditional delay.
+Use `await server.kill()` to stop and later relaunch the shared server. Use
+`await ui.kill()` to terminate an individual client; its name can then be
+passed to `clients.launch()` again.
 
 `await llm.send(...)` waits for the next request and resolves after OpenCode
 acknowledges its complete response. `llm.queue(...)` declares responses in

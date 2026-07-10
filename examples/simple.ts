@@ -20,16 +20,20 @@ export default defineScript({
         chunkSize: 10,
       }),
       llm.pause(100),
-      llm.text("The project exports a friendly message from src/message.ts.", {
-        delay: 10,
-        chunkSize: 12,
-      }),
+      llm.text(
+        'src/message.ts exports `message` with the value "Hello from OpenCode Drive".',
+        {
+          delay: 10,
+          chunkSize: 12,
+        },
+      ),
     )
+    await llm.send(llm.text("Message export"))
 
-    await ui.waitFor("The project exports a friendly message")
+    await ui.waitFor("Hello from OpenCode Drive")
     if (!(await ui.matches("OpenCode Drive")))
       throw new Error("the expected response was not visible")
 
-    console.log(`Screenshot: ${await ui.screenshot("simple-response")}`)
+    await ui.screenshot("simple-response")
   },
 })

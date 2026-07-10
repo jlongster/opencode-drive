@@ -77,6 +77,42 @@ export default defineScript({
 })
 ```
 
+Type-check every new or edited script before running it:
+
+```sh
+opencode-drive check ./drive.ts
+```
+
+Drive temporarily exposes its script API and `tsgo` beside the script while
+checking, then removes only the links it created. `wait(milliseconds)` is
+available for unconditional delays.
+
+Set `launch: "manual"` to launch the shared OpenCode server and every TUI
+explicitly:
+
+```ts
+import { defineScript } from "opencode-drive"
+
+export default defineScript({
+  launch: "manual",
+  async run({ ui, server, clients }) {
+    // ui is null in manual mode.
+    await server.launch()
+    const alice = await clients.launch("alice")
+    const bob = await clients.launch("bob")
+    await alice.submit("Hello from Alice")
+    await bob.screenshot("bob-view")
+  },
+})
+```
+
+Only one server may be launched per script. All clients share its LLM backend. Client processes and temporary
+script links are cleaned up when the script ends.
+
+`await server.kill()` stops the server so it can be launched again later.
+Every client handle also has `await ui.kill()` and its name may be reused after
+the TUI exits.
+
 Use `await llm.send(...)` to wait for and complete the next request,
 `llm.queue(...)` to declare future responses upfront, or `llm.serve(async
 function* () { ... })` for ongoing streamed responses. The backend connection,

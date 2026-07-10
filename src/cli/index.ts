@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Effect, Option } from "effect"
-import { Command, Flag } from "effect/unstable/cli"
+import { Argument, Command, Flag } from "effect/unstable/cli"
 import packageJson from "../../package.json" with { type: "json" }
 import { extractCommands } from "./parse.js"
+import { check } from "./check.js"
 import { init } from "./init.js"
 import { list } from "./list.js"
 import { logs } from "./logs.js"
@@ -36,6 +37,20 @@ const initCommand = Command.make("init", { name: initName }, (config) =>
     {
       command: "opencode-drive init --name demo",
       description: "Create an instance and print its artifact directory",
+    },
+  ]),
+)
+
+const checkCommand = Command.make(
+  "check",
+  { file: Argument.string("script") },
+  (config) => execute(() => check(config.file)),
+).pipe(
+  Command.withDescription("Type-check an OpenCode Drive script"),
+  Command.withExamples([
+    {
+      command: "opencode-drive check ./drive.ts",
+      description: "Type-check a script with the bundled script API",
     },
   ]),
 )
@@ -151,6 +166,7 @@ const root = Command.make("opencode-drive").pipe(
   Command.withDescription("Drive real and simulated OpenCode instances"),
   Command.withSubcommands([
     initCommand,
+    checkCommand,
     startCommand,
     sendCommand,
     screenshotCommand,

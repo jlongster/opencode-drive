@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, readdir, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import {
@@ -502,6 +502,90 @@ describe("opencode-drive", () => {
     expect(running(pid)).toBe(false)
     expect(await Bun.file(join(root, "registry", `${name}.json`)).exists()).toBe(false)
   })
+
+  test("checks a typed script and removes temporary dependency links", async () => {
+    const root = await temporary()
+    const directory = join(root, "scripts")
+    await mkdir(directory, { recursive: true })
+    await Bun.write(
+      join(directory, "valid.ts"),
+      'import { defineScript, wait } from "opencode-drive"\nexport default defineScript({ async run() { await wait(1) } })\n',
+    )
+    const checked = spawn(["check", join(directory, "valid.ts")], root)
+    expect(await checked.exited).toBe(0)
+    expect(await Bun.file(join(directory, "node_modules", "opencode-drive")).exists()).toBe(
+      false,
+    )
+    expect(await Bun.file(join(directory, "node_modules", ".bin", "tsgo")).exists()).toBe(false)
+    expect(await Bun.file(join(directory, "node_modules")).exists()).toBe(false)
+
+    await Bun.write(
+      join(directory, "invalid.ts"),
+      'import { wait } from "opencode-drive"\nwait("wrong")\n',
+    )
+    const invalid = spawn(["check", join(directory, "invalid.ts")], root)
+    expect(await invalid.exited).toBe(1)
+    expect(await new Response(invalid.stdout).text()).toContain(
+      "Argument of type 'string' is not assignable to parameter of type 'number'",
+    )
+  }, 60_000)
+
+  test("launches all clients explicitly for a manual UI script", async () => {
+    const root = await temporary()
+    const name = "manual-clients-test"
+    const child = spawn(
+      [
+        "start",
+        "--name",
+        name,
+        "--script",
+        fixture("manual-clients-script.ts"),
+        "--",
+        process.execPath,
+        fixture("fake-opencode.ts"),
+      ],
+      root,
+    )
+    const stderr = new Response(child.stderr).text()
+    expect(await child.exited).toBe(0)
+    const artifacts = artifactPath(await stderr)
+    roots.push(artifacts)
+    expect(await Bun.file(join(artifacts, "manual-clients.json")).json()).toEqual({
+      aliceMatches: true,
+      bobMatches: true,
+      clientBeforeServer: "launch the script server before launching clients",
+      duplicateServer: "the script server has already been launched",
+      aliceScreenshot: join(root, "output", "alice.png"),
+      bobScreenshot: join(root, "output", "bob.png"),
+    })
+    expect((await Bun.file(join(artifacts, "launches.txt")).text()).trim().split("\n")).toHaveLength(2)
+  }, 60_000)
+
+  test("kills and relaunches the scripted server and clients", async () => {
+    const root = await temporary()
+    const child = spawn(
+      [
+        "start",
+        "--name",
+        "kill-server-test",
+        "--script",
+        fixture("kill-server-script.ts"),
+        "--",
+        process.execPath,
+        fixture("fake-opencode.ts"),
+      ],
+      root,
+    )
+    const stderr = new Response(child.stderr).text()
+    expect(await child.exited).toBe(0)
+    const artifacts = artifactPath(await stderr)
+    roots.push(artifacts)
+    const result = await Bun.file(join(artifacts, "kill-server-result.json")).json()
+    expect(result.firstServer).toBeInteger()
+    expect(result.secondServer).toBeInteger()
+    expect(result.secondServer).not.toBe(result.firstServer)
+    expect((await Bun.file(join(artifacts, "launches.txt")).text()).trim().split("\n")).toHaveLength(3)
+  }, 60_000)
 
   test("rejects the removed callback script shape", async () => {
     const root = await temporary()

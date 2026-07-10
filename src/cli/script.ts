@@ -12,7 +12,9 @@ import type {
   LlmResponse,
   LlmServeHandler,
   ScriptDefinition,
+  ScriptClients,
   ScriptLlm,
+  ScriptServer,
   ScriptUi,
   UiElement,
   UiElementQuery,
@@ -36,42 +38,160 @@ export async function loadScript(file: string): Promise<ScriptDefinition> {
 export async function runScript(
   script: ScriptDefinition,
   artifacts: string,
-  endpoints: { readonly ui: string; readonly backend: string },
+  launchServer: () => Promise<{
+    readonly endpoints: { readonly backend: string }
+  }>,
+  killServer: () => Promise<void>,
+  launchClient: (
+    name: string,
+  ) => Promise<{
+    readonly endpoints: { readonly ui: string }
+    readonly child: { readonly exited: Promise<number> }
+    readonly kill: () => Promise<void>
+  }>,
   signal: AbortSignal,
   onScreenshot?: (path: string) => void,
+  onReady?: () => void,
 ) {
-  const client = await connectSimulation({ url: endpoints.ui, onScreenshot })
-  const backend = await connectBackendSimulation({
-    url: endpoints.backend,
-  }).catch((error) => {
-    client.close()
-    throw error
-  })
-  const ui = new ScriptUiClient(client, signal)
-  const llm = new ScriptLlmClient(backend)
+  let backend: BackendSimulationClient | undefined
+  const backendFailure = Promise.withResolvers<void>()
+  const connected = new Map<string, SimulationClient>()
+  let closing = false
+  const clientAbort = new AbortController()
+  const scriptSignal = AbortSignal.any([signal, clientAbort.signal])
+  const clientExit = Promise.withResolvers<{
+    readonly name: string
+    readonly status: number
+  }>()
+  const clients: ScriptClients = {
+    async launch(name) {
+      if (connected.has(name)) throw new Error(`client "${name}" is already connected`)
+      const launched = await launchClient(name)
+      let intentional = false
+      void launched.child.exited.then((status) => {
+        if (!closing && !intentional) clientExit.resolve({ name, status })
+      })
+      const client = await connectSimulation({
+        url: launched.endpoints.ui,
+        onScreenshot,
+      })
+      connected.set(name, client)
+      try {
+        await waitForEditor(client, scriptSignal)
+      } catch (error) {
+        connected.delete(name)
+        client.close()
+        throw error
+      }
+      onReady?.()
+      return new ScriptUiClient(client, scriptSignal, async () => {
+        if (intentional) return
+        intentional = true
+        connected.delete(name)
+        client.close()
+        await launched.kill()
+      })
+    },
+  }
+  const llm = new ScriptLlmClient()
+  let serverStarted = false
+  let serverStarting = false
+  let serverKilling = false
+  const server: ScriptServer = {
+    async launch() {
+      if (serverStarted || serverStarting || serverKilling)
+        throw new Error("the script server has already been launched")
+      serverStarting = true
+      try {
+        const launched = await launchServer()
+        const client = await connectBackendSimulation({
+          url: launched.endpoints.backend,
+        })
+        try {
+          await llm.attach(client)
+        } catch (error) {
+          client.close()
+          throw error
+        }
+        backend = client
+        void client.closed.then(() => {
+          if (backend === client && serverStarted && !serverKilling)
+            backendFailure.resolve()
+        })
+        serverStarted = true
+      } finally {
+        serverStarting = false
+      }
+    },
+    async kill() {
+      if (!serverStarted || serverStarting || serverKilling)
+        throw new Error("the script server is not running")
+      serverKilling = true
+      try {
+        const client = backend
+        backend = undefined
+        llm.detach(client)
+        client?.close()
+        await killServer()
+        serverStarted = false
+      } finally {
+        serverKilling = false
+      }
+    },
+  }
   const abort = () => {
-    client.close()
-    backend.close()
+    for (const client of connected.values()) client.close()
+    backend?.close()
   }
   signal.addEventListener("abort", abort, { once: true })
   try {
-    await llm.attach()
-    await waitForEditor(client, signal)
-    const execution = Promise.resolve(
-      script.run({
-        fs: createScriptFileSystem(join(artifacts, "files")),
-        ui,
-        llm,
-        artifacts,
-        signal,
+    if (!("launch" in script)) await server.launch()
+    const context = {
+      fs: createScriptFileSystem(join(artifacts, "files")),
+      clients,
+      server,
+      llm,
+      artifacts,
+      signal: scriptSignal,
+    }
+    const execution =
+      "launch" in script
+        ? Promise.resolve(script.run({ ...context, ui: null }))
+        : Promise.resolve(
+            script.run({ ...context, ui: await clients.launch("default") }),
+          )
+    const result = await Promise.race([
+      execution.then(() => ({ script: true as const })),
+      llm.failure,
+      clientExit.promise.then((exit) => ({ script: false as const, exit })),
+      backendFailure.promise.then(() => ({ backend: true as const })),
+      aborted(signal),
+    ])
+    if ("backend" in result)
+      throw new Error("OpenCode simulation backend disconnected")
+    if (!result.script) {
+      clientAbort.abort(
+        new Error(`OpenCode client "${result.exit.name}" exited`),
+      )
+      await execution
+      if (result.exit.status !== 0)
+        throw new Error(
+          `OpenCode client "${result.exit.name}" exited with status ${result.exit.status}`,
+        )
+      return
+    }
+    await Promise.race([
+      llm.settle(),
+      backendFailure.promise.then(() => {
+        throw new Error("OpenCode simulation backend disconnected")
       }),
-    )
-    await Promise.race([execution, llm.failure, aborted(signal)])
-    await llm.settle()
+    ])
   } finally {
+    closing = true
+    clientAbort.abort(new Error("script finished"))
     signal.removeEventListener("abort", abort)
-    client.close()
-    backend.close()
+    for (const client of connected.values()) client.close()
+    backend?.close()
   }
 }
 
@@ -79,7 +199,12 @@ class ScriptUiClient implements ScriptUi {
   constructor(
     private readonly client: SimulationClient,
     private readonly signal: AbortSignal,
+    private readonly terminate: () => Promise<void>,
   ) {}
+
+  kill(): Promise<void> {
+    return this.terminate()
+  }
 
   state(): Promise<UiState> {
     return this.client.state()
@@ -192,14 +317,20 @@ class ScriptLlmClient implements ScriptLlm {
     this.rejectFailure = reject
   })
 
-  constructor(private readonly backend: BackendSimulationClient) {}
+  private backend: BackendSimulationClient | undefined
 
-  async attach() {
-    await this.backend.attach((request) => {
+  async attach(backend: BackendSimulationClient) {
+    if (this.backend) throw new Error("LLM backend is already attached")
+    this.backend = backend
+    await backend.attach((request) => {
       this.pending.push(request)
       this.drain()
       this.notify()
     })
+  }
+
+  detach(backend: BackendSimulationClient | undefined) {
+    if (this.backend === backend) this.backend = undefined
   }
 
   queue(...output: ReadonlyArray<LlmOutput>): void {
@@ -350,16 +481,18 @@ class ScriptLlmClient implements ScriptLlm {
   }
 
   private async respond(request: LlmRequest, output: () => LlmResponse) {
+    const backend = this.backend
+    if (!backend) throw new Error("launch the script server before handling LLM requests")
     let terminal = false
     for await (const item of output()) {
       if (terminal)
         throw new Error(`LLM response ${request.id} emitted output after its terminal event`)
       if (item.type === "finish") {
         terminal = true
-        await this.backend.finish(request.id, item.reason)
+        await backend.finish(request.id, item.reason)
       } else if (item.type === "disconnect") {
         terminal = true
-        await this.backend.disconnect(request.id)
+        await backend.disconnect(request.id)
       } else if (item.type === "text") {
         await this.streamDelta(
           request.id,
@@ -381,10 +514,10 @@ class ScriptLlmClient implements ScriptLlm {
           throw new Error("llm.pause milliseconds must be a non-negative number")
         if (item.milliseconds > 0) await Bun.sleep(item.milliseconds)
       } else {
-        await this.backend.chunk(request.id, [item])
+        await backend.chunk(request.id, [item])
       }
     }
-    if (!terminal) await this.backend.finish(request.id, "stop")
+    if (!terminal) await backend.finish(request.id, "stop")
   }
 
   private async streamDelta(
@@ -394,6 +527,8 @@ class ScriptLlmClient implements ScriptLlm {
     text: string,
     options: Parameters<ScriptLlm["text"]>[1],
   ) {
+    const backend = this.backend
+    if (!backend) throw new Error("launch the script server before streaming LLM output")
     const delay = options?.delay ?? 2
     const chunkSize = options?.chunkSize ?? 15
     if (!Number.isFinite(delay) || delay < 0)
@@ -407,7 +542,7 @@ class ScriptLlmClient implements ScriptLlm {
       const end = Math.min(characters.length, index + size)
       const chunk = characters.slice(index, end).join("")
       index = end
-      await this.backend.chunk(id, [{ type, text: chunk }])
+      await backend.chunk(id, [{ type, text: chunk }])
       if (index < characters.length && delay > 0) await Bun.sleep(delay)
     }
   }
@@ -459,6 +594,7 @@ function isScriptDefinition(value: unknown): value is ScriptDefinition {
   const script = value as { readonly run?: unknown; readonly setup?: unknown }
   return (
     typeof script.run === "function" &&
-    (script.setup === undefined || typeof script.setup === "function")
+    (script.setup === undefined || typeof script.setup === "function") &&
+    (!("launch" in script) || script.launch === "manual")
   )
 }

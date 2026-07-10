@@ -85,6 +85,8 @@ export interface UiPosition {
 export type UiPredicate = (state: UiState) => boolean | Promise<boolean>
 
 export interface ScriptUi {
+  /** Terminates this TUI. The client name may be launched again afterward. */
+  kill(): Promise<void>
   state(): Promise<UiState>
   matches(matcher: UiMatcher): Promise<boolean>
   screenshot(name?: string): Promise<string>
@@ -219,12 +221,30 @@ export interface ScriptSetupContext {
   readonly fs: ScriptFileSystem
 }
 
+export interface ScriptClients {
+  /** Launches a headless TUI connected to this script's shared service. */
+  launch(name: string): Promise<ScriptUi>
+}
+
+export interface ScriptServer {
+  /** Launches the one shared OpenCode server for this script. */
+  launch(): Promise<void>
+  /** Stops the shared server. It may be launched again afterward. */
+  kill(): Promise<void>
+}
+
 export interface ScriptContext {
   readonly fs: ScriptFileSystem
   readonly ui: ScriptUi
+  readonly clients: ScriptClients
+  readonly server: ScriptServer
   readonly llm: ScriptLlm
   readonly artifacts: string
   readonly signal: AbortSignal
+}
+
+export interface ManualScriptContext extends Omit<ScriptContext, "ui"> {
+  readonly ui: null
 }
 
 export type ScriptSetup = (
@@ -232,10 +252,24 @@ export type ScriptSetup = (
 ) => void | Promise<void>
 
 export type ScriptRun = (context: ScriptContext) => void | Promise<void>
+export type ManualScriptRun = (
+  context: ManualScriptContext,
+) => void | Promise<void>
 
-export interface ScriptDefinition {
+export interface AutomaticScriptDefinition {
   /** Runs once before OpenCode starts. */
   readonly setup?: ScriptSetup
   /** Runs after the UI and LLM connections are ready, and again after restart. */
   readonly run: ScriptRun
 }
+
+export interface ManualScriptDefinition {
+  /** The server and every client are launched explicitly by the script. */
+  readonly launch: "manual"
+  /** Runs once before OpenCode starts. */
+  readonly setup?: ScriptSetup
+  /** Runs after the shared service and LLM connection are ready. */
+  readonly run: ManualScriptRun
+}
+
+export type ScriptDefinition = AutomaticScriptDefinition | ManualScriptDefinition

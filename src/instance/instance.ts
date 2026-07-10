@@ -63,26 +63,29 @@ export async function launchInstance(options: LaunchOptions) {
   const media = await ensureMediaDirectory()
   const files = join(artifacts, "files")
   let recording = options.record ? recordingPaths(media) : undefined
-  const writeDriveManifest = () =>
+  const writeDriveManifest = (
+    driveName = options.name,
+    driveEndpoints = endpoints,
+    driveRecording = recording,
+  ) =>
     Bun.write(
-      join(drive, `${options.name}.json`),
+      join(drive, `${driveName}.json`),
       `${JSON.stringify(
         {
-          endpoints,
-          ...(recording ? { recording: { timeline: recording.timeline } } : {}),
+          endpoints: driveEndpoints,
+          ...(driveRecording ? { recording: { timeline: driveRecording.timeline } } : {}),
         },
         undefined,
         2,
       )}\n`,
     )
-  await writeDriveManifest()
   await options.setup?.({ fs: createScriptFileSystem(files) })
   const environment = cleanEnv({
     ...process.env,
     ...options.env,
     OPENCODE_SIMULATE: "1",
+    OPENCODE_DRIVE_SCRIPTED: options.scripted ? "1" : undefined,
     DRIVE_REGISTRY_DIR: drive,
-    OPENCODE_DRIVE: options.name,
     OPENCODE_DRIVE_RENDERER: options.visible ? "visible" : "headless",
     OPENCODE_DRIVE_MEDIA_DIR: media,
     OPENCODE_CONFIG_DIR: join(files, ".opencode"),
@@ -95,19 +98,33 @@ export async function launchInstance(options: LaunchOptions) {
     XDG_STATE_HOME: join(artifacts, "home", ".local", "state"),
   })
   const command = options.dev
-    ? await prepareDev(files, options.dev)
+    ? await prepareDev(artifacts, options.dev)
     : options.command?.length
       ? [...options.command]
       : ["opencode2"]
-  const spawn = () =>
-    Bun.spawn(command, {
+  const serviceName = processDriveName(options.name, "service")
+  const spawn = (
+    driveName = options.name,
+    appCommand: ReadonlyArray<string> = command,
+    logName = "opencode",
+  ) =>
+    Bun.spawn([...appCommand], {
       cwd: files,
-      env: environment,
+      env: { ...environment, OPENCODE_DRIVE: driveName },
       stdin: options.visible ? "inherit" : "ignore",
-      stdout: !options.visible ? Bun.file(join(logs, "opencode.stdout.log")) : "inherit",
-      stderr: !options.visible ? Bun.file(join(logs, "opencode.stderr.log")) : "inherit",
+      stdout: !options.visible ? Bun.file(join(logs, `${logName}.stdout.log`)) : "inherit",
+      stderr: !options.visible ? Bun.file(join(logs, `${logName}.stderr.log`)) : "inherit",
     })
-  let child = spawn()
+  let child: ReturnType<typeof spawn> | undefined
+  const clients = new Map<string, Bun.Subprocess>()
+  const launching = new Set<string>()
+  let serverStarted = false
+  let serverStarting = false
+  let serverStopping = false
+  if (!options.scripted) {
+    await writeDriveManifest()
+    child = spawn()
+  }
   let stopping: Promise<void> | undefined
   let restarting: Promise<void> | undefined
   return {
@@ -118,24 +135,142 @@ export async function launchInstance(options: LaunchOptions) {
       return recording
     },
     get child() {
+      if (!child) throw new Error("no OpenCode process has been launched")
       return child
+    },
+    async launchServer() {
+      if (!options.scripted) throw new Error("server.launch is only available in scripted mode")
+      if (serverStarted || serverStarting || serverStopping)
+        throw new Error("the script server has already been launched")
+      serverStarting = true
+      try {
+        await writeDriveManifest(serviceName, {
+          ui: `ws://127.0.0.1:${await freePort()}`,
+          backend: endpoints.backend,
+        }, undefined)
+        const service = spawn(
+          serviceName,
+          [...command, "service", "start"],
+          "service-start",
+        )
+        const status = await service.exited
+        if (status !== 0)
+          throw new Error(`OpenCode service start exited with status ${status}`)
+        child = service
+        await waitForWebSocket(
+          endpoints.backend,
+          new Promise<number>(() => undefined),
+          60_000,
+        ).catch(async (error) => {
+          const stopped = spawn(
+            serviceName,
+            [...command, "service", "stop"],
+            "service-stop",
+          )
+          await stopped.exited.catch(() => undefined)
+          throw error
+        })
+        serverStarted = true
+        return { endpoints: { backend: endpoints.backend } }
+      } finally {
+        serverStarting = false
+      }
+    },
+    async killServer() {
+      if (!options.scripted) throw new Error("server.kill is only available in scripted mode")
+      if (!serverStarted || serverStarting || serverStopping)
+        throw new Error("the script server is not running")
+      serverStopping = true
+      try {
+        const stopped = spawn(
+          serviceName,
+          [...command, "service", "stop"],
+          "service-stop",
+        )
+        const status = await stopped.exited
+        if (status !== 0)
+          throw new Error(`OpenCode service stop exited with status ${status}`)
+        serverStarted = false
+      } finally {
+        serverStopping = false
+      }
+    },
+    async launchClient(clientName: string) {
+      if (!options.scripted) throw new Error("clients.launch is only available in scripted mode")
+      if (!serverStarted) throw new Error("launch the script server before launching clients")
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(clientName))
+        throw new Error(`invalid client name: ${clientName}`)
+      if (clients.has(clientName) || launching.has(clientName))
+        throw new Error(`client "${clientName}" is already running`)
+      if (options.visible && clients.size + launching.size > 0)
+        throw new Error("multiple clients require headless scripted mode")
+      const primary = clients.size === 0 && launching.size === 0
+      launching.add(clientName)
+      try {
+        const clientEndpoints = {
+          ui: primary ? endpoints.ui : `ws://127.0.0.1:${await freePort()}`,
+          backend: endpoints.backend,
+        }
+        const driveName = processDriveName(options.name, `client-${clientName}`)
+        const clientRecording = primary ? recording : undefined
+        await writeDriveManifest(driveName, clientEndpoints, clientRecording)
+        const launched = spawn(driveName, command, `client-${clientName}`)
+        clients.set(clientName, launched)
+        void launched.exited.then(() => {
+          if (clients.get(clientName) === launched) clients.delete(clientName)
+        })
+        if (primary) child = launched
+        await waitForWebSocket(clientEndpoints.ui, launched.exited, 60_000)
+        return {
+          endpoints: clientEndpoints,
+          child: launched,
+          kill: async () => {
+            if (clients.get(clientName) === launched) clients.delete(clientName)
+            await terminate(launched)
+          },
+        }
+      } catch (error) {
+        const launched = clients.get(clientName)
+        clients.delete(clientName)
+        if (launched) await terminate(launched)
+        throw error
+      } finally {
+        launching.delete(clientName)
+      }
     },
     async waitForDrive(requirement: "ui" | "backend" | "both" = "both", timeout = 60_000) {
       const urls =
         requirement === "both" ? [endpoints.ui, endpoints.backend] : [endpoints[requirement]]
-      await Promise.all(urls.map((url) => waitForWebSocket(url, child.exited, timeout)))
+      const exited =
+        options.scripted && requirement === "backend"
+          ? new Promise<number>(() => undefined)
+          : this.child.exited
+      await Promise.all(urls.map((url) => waitForWebSocket(url, exited, timeout)))
     },
     async restart() {
       if (restarting) return restarting
       restarting = (async () => {
-        await terminate(child)
+        if (options.scripted) {
+          await Promise.all([...clients.values()].map(terminate))
+          clients.clear()
+          if (serverStarted) {
+            const stopped = spawn(serviceName, [...command, "service", "stop"], "service-stop")
+            await stopped.exited.catch(() => undefined)
+            serverStarted = false
+            child = undefined
+          }
+        } else {
+          await terminate(this.child)
+        }
         recording = options.record ? recordingPaths(media) : undefined
-        await writeDriveManifest()
-        child = spawn()
-        await Promise.all([
-          waitForWebSocket(endpoints.ui, child.exited, 60_000),
-          waitForWebSocket(endpoints.backend, child.exited, 60_000),
-        ])
+        if (!options.scripted) {
+          await writeDriveManifest()
+          child = spawn()
+          await Promise.all([
+            waitForWebSocket(endpoints.ui, child.exited, 60_000),
+            waitForWebSocket(endpoints.backend, child.exited, 60_000),
+          ])
+        }
       })().finally(() => {
         restarting = undefined
       })
@@ -143,7 +278,7 @@ export async function launchInstance(options: LaunchOptions) {
     },
     async wait() {
       while (true) {
-        const current = child
+        const current = this.child
         const status = await current.exited
         if (restarting) {
           await restarting
@@ -157,12 +292,26 @@ export async function launchInstance(options: LaunchOptions) {
       if (stopping) return stopping
       stopping = (async () => {
         if (restarting) await restarting.catch(() => undefined)
-        await terminate(child)
+        await Promise.all([...clients.values()].map(terminate))
+        if (!options.scripted) await terminate(this.child)
+        if (options.scripted && serverStarted) {
+          const stopped = spawn(
+            serviceName,
+            [...command, "service", "stop"],
+            "service-stop",
+          )
+          await stopped.exited.catch(() => undefined)
+        }
         await stopService(join(artifacts, "home", ".local", "state"))
       })()
       return stopping
     },
   }
+}
+
+function processDriveName(instance: string, role: string) {
+  const suffix = crypto.randomUUID().slice(0, 8)
+  return `${instance.slice(0, 36)}-${role.slice(0, 17)}-${suffix}`
 }
 
 function recordingPaths(directory: string) {
@@ -181,7 +330,7 @@ async function terminate(child: Bun.Subprocess) {
   await child.exited
 }
 
-async function prepareDev(cwd: string, directory: string) {
+async function prepareDev(artifacts: string, directory: string) {
   const root = resolve(directory)
   const entrypoint = join(root, "packages", "cli", "src", "index.ts")
   if (!(await Bun.file(entrypoint).exists()))
@@ -203,25 +352,34 @@ async function prepareDev(cwd: string, directory: string) {
   const info: unknown = await Bun.file(solidPackage).json()
   if (!isPackageInfo(info))
     throw new Error(`Invalid @opentui/solid package metadata: ${solidPackage}`)
+  const manifestPath = join(artifacts, "package.json")
+  const manifest: unknown = await Bun.file(manifestPath)
+    .json()
+    .catch(() => ({}))
+  const existing = isDependencyManifest(manifest) ? manifest : {}
   await Bun.write(
-    join(cwd, "package.json"),
+    manifestPath,
     `${JSON.stringify(
       {
+        ...existing,
         private: true,
-        dependencies: { "@opentui/solid": info.version },
+        dependencies: {
+          ...existing.dependencies,
+          "@opentui/solid": info.version,
+        },
       },
       undefined,
       2,
     )}\n`,
   )
   const install = Bun.spawn([process.execPath, "install"], {
-    cwd,
+    cwd: artifacts,
     stdin: "ignore",
     stdout: "ignore",
     stderr: "ignore",
   })
   const status = await install.exited
-  if (status !== 0) throw new Error(`bun install failed in ${cwd} with status ${status}`)
+  if (status !== 0) throw new Error(`bun install failed in ${artifacts} with status ${status}`)
   return [process.execPath, "--conditions=browser", "--preload=@opentui/solid/preload", entrypoint]
 }
 
@@ -238,6 +396,7 @@ async function freePort() {
 
 async function stopService(state: string) {
   const files = [
+    join(state, "opencode", "server.json"),
     join(state, "opencode", "service-local.json"),
     join(state, "opencode", "service.json"),
   ]
@@ -285,6 +444,14 @@ function isPackageInfo(value: unknown): value is { readonly version: string } {
     "version" in value &&
     typeof value.version === "string"
   )
+}
+
+function isDependencyManifest(
+  value: unknown,
+): value is { readonly dependencies?: Readonly<Record<string, string>> } {
+  if (typeof value !== "object" || value === null) return false
+  if (!("dependencies" in value) || value.dependencies === undefined) return true
+  return typeof value.dependencies === "object" && value.dependencies !== null
 }
 
 async function waitForWebSocket(url: string, exited: Promise<number>, timeout: number) {

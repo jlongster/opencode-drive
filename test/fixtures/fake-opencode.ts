@@ -1,23 +1,61 @@
-const screen = { value: "Fake OpenCode" }
+const serviceMode = process.env.OPENCODE_DRIVE_SCRIPTED === "1"
+const operation = process.argv[2]
+if (
+  serviceMode &&
+  process.argv.at(-2) === "service" &&
+  process.argv.at(-1) === "start"
+) {
+  const service = Bun.spawn([
+    process.execPath,
+    process.argv[1]!,
+    ...process.argv.slice(2, -2),
+    "__service",
+  ], {
+    cwd: process.cwd(),
+    env: process.env,
+    stdin: "ignore",
+    stdout: "ignore",
+    stderr: "ignore",
+  })
+  service.unref()
+  process.exit(0)
+}
+if (
+  serviceMode &&
+  process.argv.at(-2) === "service" &&
+  process.argv.at(-1) === "stop"
+) {
+  const pid = Number(
+    await Bun.file(`${process.env.OPENCODE_TEST_HOME}/service.pid`)
+      .text()
+      .catch(() => ""),
+  )
+  if (Number.isInteger(pid)) process.kill(pid, "SIGTERM")
+  process.exit(0)
+}
+const role = serviceMode
+  ? process.argv.at(-1) === "__service"
+    ? "service"
+    : "client"
+  : "legacy"
+if (role === "service" && process.env.OPENCODE_TEST_HOME)
+  await Bun.write(`${process.env.OPENCODE_TEST_HOME}/service.pid`, String(process.pid))
+
+const screen = { value: `Fake OpenCode${role === "client" ? ` ${process.env.OPENCODE_DRIVE}` : ""}` }
 const drive = await resolveDrive()
 const endpoints = drive.endpoints
-if (drive.recording)
+if (drive.recording && role !== "service")
   await Bun.write(
     drive.recording.timeline,
     `${JSON.stringify({ type: "header", version: 1, cols: 100, rows: 40, encoding: "base64" })}\n${JSON.stringify({ type: "output", at_ms: 0, data: Buffer.from("Fake OpenCode").toString("base64") })}\n`,
   )
-if (process.env.OPENCODE_TEST_HOME) {
+if (process.env.OPENCODE_TEST_HOME && role !== "service") {
   await Bun.write(
     `${process.env.OPENCODE_TEST_HOME}/child.pid`,
     String(process.pid),
   )
   const launches = `${process.env.OPENCODE_TEST_HOME}/launches.txt`
-  await Bun.write(
-    launches,
-    `${await Bun.file(launches)
-      .text()
-      .catch(() => "")}launch\n`,
-  )
+  await appendFile(launches, "launch\n")
   await Bun.write(
     `${process.env.OPENCODE_TEST_HOME}/renderer.txt`,
     process.env.OPENCODE_DRIVE_RENDERER ?? "missing",
@@ -34,7 +72,7 @@ if (process.env.OPENCODE_TEST_HOME) {
     )
 }
 
-const ui = Bun.serve({
+const ui = role === "service" ? undefined : Bun.serve({
   hostname: "127.0.0.1",
   port: Number(new URL(endpoints.ui).port),
   fetch(request, server) {
@@ -55,7 +93,7 @@ const ui = Bun.serve({
   },
 })
 
-const backend = Bun.serve({
+const backend = role === "client" ? undefined : Bun.serve({
   hostname: "127.0.0.1",
   port: Number(new URL(endpoints.backend).port),
   fetch(request, server) {
@@ -110,10 +148,10 @@ const backend = Bun.serve({
 await new Promise<void>((resolve) => {
   process.once("SIGINT", resolve)
   process.once("SIGTERM", resolve)
-  const lifetime = Number(process.argv[2])
+  const lifetime = role === "service" ? Number.NaN : Number(process.argv[2])
   if (Number.isFinite(lifetime)) setTimeout(resolve, lifetime)
 })
-await Promise.all([ui.stop(true), backend.stop(true)])
+await Promise.all([ui?.stop(true), backend?.stop(true)])
 
 function frontend(method: string, params: unknown) {
   if (method === "ui.screenshot") {
@@ -180,3 +218,4 @@ async function resolveDrive() {
     recording: { timeline: "/tmp/opencode-drive-fake/recording.jsonl" },
   }
 }
+import { appendFile } from "node:fs/promises"

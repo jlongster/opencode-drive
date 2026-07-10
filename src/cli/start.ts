@@ -7,6 +7,7 @@ import { connectMockBackend } from "./mock-backend.js"
 import { createResponseSettings } from "./response-generator.js"
 import { loadScript, runScript } from "./script.js"
 import type { ScriptDefinition } from "../script/types.js"
+import { prepareScriptTooling } from "../script/tooling.js"
 import { listenControl } from "../instance/control.js"
 import {
   controlPath,
@@ -23,7 +24,19 @@ import type { StartOptions } from "./types.js"
 export async function start(options: StartOptions) {
   const initialized = await initializeManifest(options.name, process.cwd(), initializeInstance)
   if (!options.visible && !options.script && !options.daemon) return startDetached(options)
-  const script = options.script ? await loadScript(options.script) : undefined
+  const scriptTooling = options.script
+    ? await prepareScriptTooling(initialized.artifacts, options.script)
+    : undefined
+  const script = scriptTooling
+    ? await loadScript(scriptTooling.file).catch(async (error) => {
+        await scriptTooling.links.remove()
+        throw error
+      })
+    : undefined
+  if (script && "launch" in script && options.record) {
+    await scriptTooling?.links.remove()
+    throw new Error("--record is not supported when launch is manual")
+  }
   const responses = createResponseSettings()
   const instance = await launchInstance({
     artifacts: initialized.artifacts,
@@ -34,6 +47,9 @@ export async function start(options: StartOptions) {
     visible: options.visible,
     record: options.record,
     setup: script?.setup,
+  }).catch(async (error) => {
+    await scriptTooling?.links.remove()
+    throw error
   })
   await register({
     version: 1,
@@ -48,6 +64,7 @@ export async function start(options: StartOptions) {
     control: controlPath(options.name),
   }).catch(async (error) => {
     await instance.stop()
+    await scriptTooling?.links.remove()
     throw error
   })
   let completed = false
@@ -195,6 +212,7 @@ export async function start(options: StartOptions) {
     await closeControl?.()
     await instance.stop()
     await unregister(options.name, process.pid)
+    await scriptTooling?.links.remove()
     if (options.script && !options.visible) report(instance, completed ? "completed" : undefined)
     if (options.script && recordingPath) console.error(`opencode-drive: recording ${recordingPath}`)
   }
@@ -291,56 +309,53 @@ function run(
   onScreenshot: (path: string) => void,
 ) {
   const abort = new AbortController()
-  const child = instance.child
-  let ready!: () => void
-  const readiness = new Promise<void>((resolve) => {
-    ready = resolve
+  const readiness = Promise.withResolvers<void>()
+  let markedReady = false
+  const ready = () => {
+    if (markedReady) return
+    markedReady = true
+    readiness.resolve()
+  }
+  const promise = (async () => {
+    if (!driveScript) await instance.waitForDrive("both")
+    if (driveScript) {
+      await runScript(
+        driveScript,
+        instance.artifacts,
+        () => instance.launchServer(),
+        () => instance.killServer(),
+        (name) => instance.launchClient(name),
+        abort.signal,
+        onScreenshot,
+        ready,
+      )
+      ready()
+      return
+    }
+    const child = instance.child
+    const mock = await connectMockBackend(instance.endpoints.backend, responses)
+    ready()
+    abort.signal.addEventListener("abort", () => mock.close(), {
+      once: true,
+    })
+    const status = await Promise.race([
+      child.exited,
+      new Promise<number>((resolve) =>
+        abort.signal.addEventListener("abort", () => resolve(0), {
+          once: true,
+        }),
+      ),
+    ])
+    mock.close()
+    if (status !== 0 && !abort.signal.aborted) process.exitCode = status
+  })().catch((error) => {
+    if (!markedReady) readiness.reject(error)
+    throw error
   })
   return {
     abort,
-    ready: readiness,
-    promise: (async () => {
-      await instance.waitForDrive("both")
-      if (driveScript) {
-        const script = runScript(
-          driveScript,
-          instance.artifacts,
-          instance.endpoints,
-          abort.signal,
-          onScreenshot,
-        )
-        ready()
-        if (options.visible) {
-          await script
-          return
-        }
-        const result = await Promise.race([
-          script.then(() => ({ script: true as const })),
-          child.exited.then((status) => ({ script: false as const, status })),
-        ])
-        if (!result.script) {
-          abort.abort(new Error(`OpenCode exited with status ${result.status}`))
-          await script.catch(() => undefined)
-          if (result.status !== 0) process.exitCode = result.status
-        }
-        return
-      }
-      const mock = await connectMockBackend(instance.endpoints.backend, responses)
-      ready()
-      abort.signal.addEventListener("abort", () => mock.close(), {
-        once: true,
-      })
-      const status = await Promise.race([
-        child.exited,
-        new Promise<number>((resolve) =>
-          abort.signal.addEventListener("abort", () => resolve(0), {
-            once: true,
-          }),
-        ),
-      ])
-      mock.close()
-      if (status !== 0 && !abort.signal.aborted) process.exitCode = status
-    })(),
+    ready: readiness.promise,
+    promise,
   }
 }
 

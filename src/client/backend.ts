@@ -53,11 +53,13 @@ interface Waiter {
 
 export class BackendSimulationClient {
   readonly url: string
+  readonly closed: Promise<void>
 
   private readonly socket: WebSocket
   private readonly timeout: number
   private nextId = 1
   private closing = false
+  private readonly resolveClosed: () => void
   private readonly pending = new Map<number, Waiter>()
   private readonly llmRequests = new Set<
     (request: Backend.OpenedExchange) => void
@@ -67,15 +69,20 @@ export class BackendSimulationClient {
     this.socket = socket
     this.url = url
     this.timeout = timeout
+    const closed = Promise.withResolvers<void>()
+    this.closed = closed.promise
+    this.resolveClosed = closed.resolve
     socket.addEventListener("message", (event) =>
       this.onMessage(String(event.data)),
     )
-    socket.addEventListener("close", () =>
-      this.rejectAll(new BackendSimulationError("connection closed")),
-    )
-    socket.addEventListener("error", () =>
-      this.rejectAll(new BackendSimulationError("connection error")),
-    )
+    socket.addEventListener("close", () => {
+      this.resolveClosed()
+      this.rejectAll(new BackendSimulationError("connection closed"))
+    })
+    socket.addEventListener("error", () => {
+      this.resolveClosed()
+      this.rejectAll(new BackendSimulationError("connection error"))
+    })
   }
 
   static async connect(
