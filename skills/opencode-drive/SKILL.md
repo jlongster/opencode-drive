@@ -214,6 +214,12 @@ Use the exported `wait(milliseconds)` utility for an unconditional delay.
 Use `await server.kill()` to stop and later relaunch the shared server. Use
 `await ui.kill()` to terminate an individual client; its name can then be
 passed to `clients.launch()` again.
+Pass `{ record: true }` to `clients.launch(name, options)` to record that
+client. `ui.kill()` exports and returns its video path before terminating it;
+active recorded clients are exported automatically when the script ends.
+Background title requests are answered automatically and do not consume normal
+LLM responses. In manual-launch scripts, call `llm.title(handler)` before
+`server.launch()` to customize title generation.
 
 `await llm.send(...)` waits for the next request and resolves after OpenCode
 acknowledges its complete response. `llm.queue(...)` declares responses in

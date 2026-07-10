@@ -86,7 +86,7 @@ export type UiPredicate = (state: UiState) => boolean | Promise<boolean>
 
 export interface ScriptUi {
   /** Terminates this TUI. The client name may be launched again afterward. */
-  kill(): Promise<void>
+  kill(): Promise<string | undefined>
   state(): Promise<UiState>
   matches(matcher: UiMatcher): Promise<boolean>
   screenshot(name?: string): Promise<string>
@@ -197,6 +197,11 @@ export type LlmServeHandler = (
   index: number,
 ) => LlmResponse
 
+export type LlmTitleHandler = (
+  request: LlmRequest,
+  index: number,
+) => string | Promise<string>
+
 export interface ScriptLlm {
   /** Queues one response composed of these chunks and terminal events. */
   queue(...output: ReadonlyArray<LlmOutput>): void
@@ -204,6 +209,8 @@ export interface ScriptLlm {
   send(...output: ReadonlyArray<LlmOutput>): Promise<void>
   /** Generates a response for every LLM request until the script ends. */
   serve(handler: LlmServeHandler): void
+  /** Overrides the default response for background title requests. */
+  title(handler: LlmTitleHandler): void
 
   text(text: string, options?: LlmStreamOptions): LlmText
   reasoning(text: string, options?: LlmStreamOptions): LlmReasoning
@@ -223,7 +230,12 @@ export interface ScriptSetupContext {
 
 export interface ScriptClients {
   /** Launches a headless TUI connected to this script's shared service. */
-  launch(name: string): Promise<ScriptUi>
+  launch(name: string, options?: ScriptClientOptions): Promise<ScriptUi>
+}
+
+export interface ScriptClientOptions {
+  /** Records this client and exports an MP4 before it is killed. */
+  readonly record?: boolean
 }
 
 export interface ScriptServer {

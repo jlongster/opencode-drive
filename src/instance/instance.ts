@@ -195,7 +195,10 @@ export async function launchInstance(options: LaunchOptions) {
         serverStopping = false
       }
     },
-    async launchClient(clientName: string) {
+    async launchClient(
+      clientName: string,
+      clientOptions: { readonly record?: boolean } = {},
+    ) {
       if (!options.scripted) throw new Error("clients.launch is only available in scripted mode")
       if (!serverStarted) throw new Error("launch the script server before launching clients")
       if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(clientName))
@@ -212,7 +215,11 @@ export async function launchInstance(options: LaunchOptions) {
           backend: endpoints.backend,
         }
         const driveName = processDriveName(options.name, `client-${clientName}`)
-        const clientRecording = primary ? recording : undefined
+        const clientRecording = clientOptions.record
+          ? recordingPaths(media)
+          : primary
+            ? recording
+            : undefined
         await writeDriveManifest(driveName, clientEndpoints, clientRecording)
         const launched = spawn(driveName, command, `client-${clientName}`)
         clients.set(clientName, launched)
@@ -224,6 +231,7 @@ export async function launchInstance(options: LaunchOptions) {
         return {
           endpoints: clientEndpoints,
           child: launched,
+          recording: clientRecording,
           kill: async () => {
             if (clients.get(clientName) === launched) clients.delete(clientName)
             await terminate(launched)

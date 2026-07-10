@@ -72,10 +72,17 @@ export async function start(options: StartOptions) {
   let restarting: Promise<string | undefined> | undefined
   let stopping = false
   const screenshots: string[] = []
+  const recordings: string[] = []
   let driveReady = false
   let recording: Promise<string | undefined> | undefined
   const finishCurrentRecording = (onProgress?: (percent: number) => void) => {
-    if (!options.record || options.visible || !driveReady) return Promise.resolve(undefined)
+    if (
+      !options.record ||
+      options.visible ||
+      !driveReady ||
+      options.script !== undefined
+    )
+      return Promise.resolve(undefined)
     recording ??= finishRecording(instance, onProgress)
     return recording
   }
@@ -122,7 +129,14 @@ export async function start(options: StartOptions) {
           driveReady = false
           await instance.restart()
           recording = undefined
-          current = run(options, instance, responses, script, (path) => screenshots.push(path))
+          current = run(
+            options,
+            instance,
+            responses,
+            script,
+            (path) => screenshots.push(path),
+            (path) => recordings.push(path),
+          )
           await current.ready
           driveReady = true
           await markReady(options.name, process.pid)
@@ -139,7 +153,14 @@ export async function start(options: StartOptions) {
         return responses.update(input)
       },
     })
-    current = run(options, instance, responses, script, (path) => screenshots.push(path))
+    current = run(
+      options,
+      instance,
+      responses,
+      script,
+      (path) => screenshots.push(path),
+      (path) => recordings.push(path),
+    )
     await current.ready
     driveReady = true
     await markReady(options.name, process.pid)
@@ -215,6 +236,9 @@ export async function start(options: StartOptions) {
     await scriptTooling?.links.remove()
     if (options.script && !options.visible) report(instance, completed ? "completed" : undefined)
     if (options.script && recordingPath) console.error(`opencode-drive: recording ${recordingPath}`)
+    if (options.script)
+      for (const output of recordings)
+        console.error(`opencode-drive: recording ${output}`)
   }
 }
 
@@ -307,6 +331,7 @@ function run(
   responses: ReturnType<typeof createResponseSettings>,
   driveScript: ScriptDefinition | undefined,
   onScreenshot: (path: string) => void,
+  onRecording: (path: string) => void,
 ) {
   const abort = new AbortController()
   const readiness = Promise.withResolvers<void>()
@@ -324,9 +349,10 @@ function run(
         instance.artifacts,
         () => instance.launchServer(),
         () => instance.killServer(),
-        (name) => instance.launchClient(name),
+        (name, clientOptions) => instance.launchClient(name, clientOptions),
         abort.signal,
         onScreenshot,
+        onRecording,
         ready,
       )
       ready()

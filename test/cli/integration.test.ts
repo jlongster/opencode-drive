@@ -548,7 +548,8 @@ describe("opencode-drive", () => {
     )
     const stderr = new Response(child.stderr).text()
     expect(await child.exited).toBe(0)
-    const artifacts = artifactPath(await stderr)
+    const error = await stderr
+    const artifacts = artifactPath(error)
     roots.push(artifacts)
     expect(await Bun.file(join(artifacts, "manual-clients.json")).json()).toEqual({
       aliceMatches: true,
@@ -578,12 +579,23 @@ describe("opencode-drive", () => {
     )
     const stderr = new Response(child.stderr).text()
     expect(await child.exited).toBe(0)
-    const artifacts = artifactPath(await stderr)
+    const error = await stderr
+    const artifacts = artifactPath(error)
     roots.push(artifacts)
     const result = await Bun.file(join(artifacts, "kill-server-result.json")).json()
     expect(result.firstServer).toBeInteger()
     expect(result.secondServer).toBeInteger()
     expect(result.secondServer).not.toBe(result.firstServer)
+    expect(result.aliceRecording).toMatch(/\/output\/recording-.*\.mp4$/)
+    expect(await Bun.file(result.aliceRecording).exists()).toBe(true)
+    const recordings = [...error.matchAll(/opencode-drive: recording (.+\.mp4)/g)].map(
+      (match) => match[1]!,
+    )
+    expect(recordings).toHaveLength(2)
+    expect(await Promise.all(recordings.map((path) => Bun.file(path).exists()))).toEqual([
+      true,
+      true,
+    ])
     expect((await Bun.file(join(artifacts, "launches.txt")).text()).trim().split("\n")).toHaveLength(3)
   }, 60_000)
 
@@ -618,6 +630,41 @@ describe("opencode-drive", () => {
     )
     expect(await child.exited).toBe(0)
     expect(await Bun.file(join(root, "registry", `${name}.json`)).exists()).toBe(false)
+  })
+
+  test("routes title requests outside the normal LLM response sequence", async () => {
+    const root = await temporary()
+    const child = spawn(
+      [
+        "start",
+        "--name",
+        "title-script-test",
+        "--script",
+        fixture("title-script.ts"),
+        "--",
+        process.execPath,
+        fixture("fake-opencode.ts"),
+        "title-requests",
+      ],
+      root,
+    )
+    const stderr = new Response(child.stderr).text()
+    expect(await child.exited).toBe(0)
+    const artifacts = artifactPath(await stderr)
+    roots.push(artifacts)
+    const events = (await Bun.file(join(artifacts, "backend-events.jsonl")).text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    const text = (id: string) =>
+      events
+        .filter((event) => event.method === "llm.chunk" && event.params.id === id)
+        .flatMap((event) => event.params.items)
+        .filter((item) => item.type === "textDelta")
+        .map((item) => item.text)
+        .join("")
+    expect(text("ex_title")).toBe("Custom title")
+    expect(text("ex_mock")).toBe("Normal response")
   })
 
   test("serves typed LLM chunks and preserves an explicit finish", async () => {

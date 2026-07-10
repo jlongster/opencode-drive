@@ -11,23 +11,21 @@ export default defineScript({
     ])
 
     const [alice, bob] = await Promise.all([
-      clients.launch("alice"),
-      clients.launch("bob"),
+      clients.launch("alice", { record: true }),
+      clients.launch("bob", { record: true }),
     ])
 
     await Promise.all([
       alice.submit("Reply to Alice"),
       bob.submit("Reply to Bob"),
     ])
-
     await Promise.all([
       alice.screenshot("multiple-clients-alice-submitted"),
       bob.screenshot("multiple-clients-bob-submitted"),
     ])
-
     await Promise.all([
-      alice.waitFor("Response for request"),
-      bob.waitFor("Response for request"),
+      alice.waitFor("Response for request", { timeout: 30_000 }),
+      bob.waitFor("Response for request", { timeout: 30_000 }),
     ])
 
     await Promise.all([

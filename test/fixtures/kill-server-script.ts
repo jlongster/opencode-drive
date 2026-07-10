@@ -6,8 +6,8 @@ export default defineScript({
     await server.launch()
     const firstServer = Number(await Bun.file(`${artifacts}/service.pid`).text())
     const [alice, bob] = await Promise.all([
-      clients.launch("alice"),
-      clients.launch("bob"),
+      clients.launch("alice", { record: true }),
+      clients.launch("bob", { record: true }),
     ])
 
     await server.kill()
@@ -19,14 +19,14 @@ export default defineScript({
     const secondServer = Number(await Bun.file(`${artifacts}/service.pid`).text())
     if (secondServer === firstServer) throw new Error("the server was not relaunched")
 
-    await Promise.all([alice.kill(), bob.kill()])
+    const aliceRecording = await alice.kill()
     const relaunchedAlice = await clients.launch("alice")
     await relaunchedAlice.kill()
     await server.kill()
 
     await Bun.write(
       `${artifacts}/kill-server-result.json`,
-      JSON.stringify({ firstServer, secondServer }),
+      JSON.stringify({ firstServer, secondServer, aliceRecording }),
     )
   },
 })

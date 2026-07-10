@@ -129,6 +129,25 @@ const backend = role === "client" ? undefined : Bun.serve({
       if (request.method === "llm.attach") {
         const requestDelay = Number(process.argv[3])
         if (Number.isFinite(requestDelay)) await Bun.sleep(requestDelay)
+        if (process.argv.includes("title-requests"))
+          socket.send(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              method: "llm.request",
+              params: {
+                id: "ex_title",
+                url: "https://api.openai.com/v1/chat/completions",
+                body: {
+                  messages: [
+                    {
+                      role: "system",
+                      content: "You are a title generator. You output ONLY a thread title.",
+                    },
+                  ],
+                },
+              },
+            }),
+          )
         socket.send(
           JSON.stringify({
             jsonrpc: "2.0",

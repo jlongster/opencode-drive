@@ -113,6 +113,25 @@ script links are cleaned up when the script ends.
 Every client handle also has `await ui.kill()` and its name may be reused after
 the TUI exits.
 
+Pass `{ record: true }` to record an individual client:
+
+```ts
+const ui = await clients.launch("alice", { record: true })
+const video = await ui.kill()
+```
+
+`ui.kill()` exports the recording before terminating the TUI. Clients still
+running when the script ends are recorded and terminated automatically.
+
+Background title requests receive `OpenCode Drive` by default and do not
+consume `llm.queue`, `llm.send`, or `llm.serve` responses. Manual-launch
+scripts can customize them before starting the server:
+
+```ts
+llm.title((request) => "Custom title")
+await server.launch()
+```
+
 Use `await llm.send(...)` to wait for and complete the next request,
 `llm.queue(...)` to declare future responses upfront, or `llm.serve(async
 function* () { ... })` for ongoing streamed responses. The backend connection,

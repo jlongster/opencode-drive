@@ -6,11 +6,14 @@ import type {
   SimulationClient,
 } from "../client/index.js"
 import { createScriptFileSystem } from "../script/filesystem.js"
+import { exportRecording } from "../recording/index.js"
 import type {
   LlmOutput,
+  JsonValue,
   LlmRequest,
   LlmResponse,
   LlmServeHandler,
+  LlmTitleHandler,
   ScriptDefinition,
   ScriptClients,
   ScriptLlm,
@@ -44,18 +47,22 @@ export async function runScript(
   killServer: () => Promise<void>,
   launchClient: (
     name: string,
+    options?: { readonly record?: boolean },
   ) => Promise<{
     readonly endpoints: { readonly ui: string }
     readonly child: { readonly exited: Promise<number> }
     readonly kill: () => Promise<void>
+    readonly recording?: { readonly timeline: string; readonly video: string }
   }>,
   signal: AbortSignal,
   onScreenshot?: (path: string) => void,
+  onRecording?: (path: string) => void,
   onReady?: () => void,
 ) {
   let backend: BackendSimulationClient | undefined
   const backendFailure = Promise.withResolvers<void>()
   const connected = new Map<string, SimulationClient>()
+  const finalizers = new Map<string, () => Promise<string | undefined>>()
   let closing = false
   const clientAbort = new AbortController()
   const scriptSignal = AbortSignal.any([signal, clientAbort.signal])
@@ -64,9 +71,9 @@ export async function runScript(
     readonly status: number
   }>()
   const clients: ScriptClients = {
-    async launch(name) {
+    async launch(name, options) {
       if (connected.has(name)) throw new Error(`client "${name}" is already connected`)
-      const launched = await launchClient(name)
+      const launched = await launchClient(name, options)
       let intentional = false
       void launched.child.exited.then((status) => {
         if (!closing && !intentional) clientExit.resolve({ name, status })
@@ -84,13 +91,38 @@ export async function runScript(
         throw error
       }
       onReady?.()
-      return new ScriptUiClient(client, scriptSignal, async () => {
-        if (intentional) return
-        intentional = true
-        connected.delete(name)
-        client.close()
-        await launched.kill()
-      })
+      let finalizing: Promise<string | undefined> | undefined
+      const finalize = () => {
+        finalizing ??= (async () => {
+          intentional = true
+          let output: string | undefined
+          try {
+            if (launched.recording) {
+              const timeline = await client.finishRecording()
+              if (timeline !== launched.recording.timeline)
+                throw new Error(
+                  `OpenCode returned an unexpected recording path: ${timeline}`,
+                )
+              if (!(await Bun.file(timeline).exists()))
+                throw new Error(
+                  `OpenCode recording timeline was not created: ${timeline}`,
+                )
+              await exportRecording(timeline, launched.recording.video)
+              output = launched.recording.video
+              onRecording?.(output)
+            }
+            return output
+          } finally {
+            finalizers.delete(name)
+            connected.delete(name)
+            client.close()
+            await launched.kill()
+          }
+        })()
+        return finalizing
+      }
+      finalizers.set(name, finalize)
+      return new ScriptUiClient(client, scriptSignal, finalize)
     },
   }
   const llm = new ScriptLlmClient()
@@ -140,7 +172,6 @@ export async function runScript(
     },
   }
   const abort = () => {
-    for (const client of connected.values()) client.close()
     backend?.close()
   }
   signal.addEventListener("abort", abort, { once: true })
@@ -190,6 +221,7 @@ export async function runScript(
     closing = true
     clientAbort.abort(new Error("script finished"))
     signal.removeEventListener("abort", abort)
+    await Promise.all([...finalizers.values()].map((finalize) => finalize()))
     for (const client of connected.values()) client.close()
     backend?.close()
   }
@@ -199,10 +231,10 @@ class ScriptUiClient implements ScriptUi {
   constructor(
     private readonly client: SimulationClient,
     private readonly signal: AbortSignal,
-    private readonly terminate: () => Promise<void>,
+    private readonly terminate: () => Promise<string | undefined>,
   ) {}
 
-  kill(): Promise<void> {
+  kill(): Promise<string | undefined> {
     return this.terminate()
   }
 
@@ -308,8 +340,11 @@ class ScriptLlmClient implements ScriptLlm {
   private readonly queued: QueuedLlmResponse[] = []
   private readonly tasks = new Set<Promise<void>>()
   private handler: LlmServeHandler | undefined
+  private titleHandler: LlmTitleHandler = () => "OpenCode Drive"
+  private titleHandlerSet = false
   private mode: "queue" | "serve" | undefined
   private requestIndex = 0
+  private titleRequestIndex = 0
   private failed = false
   private readonly changes = new Set<() => void>()
   private rejectFailure!: (error: unknown) => void
@@ -323,6 +358,15 @@ class ScriptLlmClient implements ScriptLlm {
     if (this.backend) throw new Error("LLM backend is already attached")
     this.backend = backend
     await backend.attach((request) => {
+      if (isTitleRequest(request)) {
+        const index = this.titleRequestIndex++
+        const pending = [...this.tasks]
+        this.start(request, async function* (this: ScriptLlmClient) {
+          await Promise.all(pending)
+          yield this.text(await this.titleHandler(request, index))
+        }.bind(this))
+        return
+      }
       this.pending.push(request)
       this.drain()
       this.notify()
@@ -357,6 +401,12 @@ class ScriptLlmClient implements ScriptLlm {
     this.mode = "serve"
     this.handler = handler
     this.drain()
+  }
+
+  title(handler: LlmTitleHandler): void {
+    if (this.titleHandlerSet) throw new Error("llm.title may only be configured once")
+    this.titleHandlerSet = true
+    this.titleHandler = handler
   }
 
   text(text: string, options?: Parameters<ScriptLlm["text"]>[1]) {
@@ -572,6 +622,27 @@ function matchesElement(element: UiElement, query: UiElementQuery) {
     (query.clickable === undefined || element.clickable === query.clickable) &&
     (query.editor === undefined || element.editor === query.editor)
   )
+}
+
+function isTitleRequest(request: LlmRequest) {
+  const body = request.body
+  if (!isJsonObject(body)) return false
+  const messages = body.messages
+  if (!Array.isArray(messages)) return false
+  const system = messages.find(
+    (message) => isJsonObject(message) && message.role === "system",
+  )
+  return (
+    isJsonObject(system) &&
+    typeof system.content === "string" &&
+    system.content.startsWith("You are a title generator.")
+  )
+}
+
+function isJsonObject(
+  value: JsonValue | undefined,
+): value is { readonly [key: string]: JsonValue } {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 function aborted(signal: AbortSignal) {
