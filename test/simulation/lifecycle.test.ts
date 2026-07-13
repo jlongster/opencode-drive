@@ -4,6 +4,7 @@ import {
   BackendSimulationError,
   SimulationClient,
   SimulationError,
+  SimulationProtocol,
   connectBackendSimulation,
   connectSimulation,
   defaultBackendPort,
@@ -44,6 +45,20 @@ describe("OpenCode simulation transport lifecycle", () => {
     try {
       expect(defaultPort).toBe(40900)
       expect(defaultBackendPort).toBe(40950)
+      expect(Object.keys(SimulationProtocol).sort()).toEqual([
+        "Backend",
+        "BackendSimulationClient",
+        "BackendSimulationError",
+        "Frontend",
+        "JsonRpc",
+        "SimulationClient",
+        "SimulationError",
+        "SimulationProtocol",
+        "connectBackendSimulation",
+        "connectSimulation",
+        "defaultBackendPort",
+        "defaultPort",
+      ])
 
       const clients = await Promise.all([
         connectSimulation({ url: uiPeer.url }),
