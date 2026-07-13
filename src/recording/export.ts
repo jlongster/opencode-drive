@@ -4,7 +4,7 @@ import { copyFile, link, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, extname, join } from "node:path"
 import { replayRecording, type ReplayOptions } from "./replay.js"
-import { renderFrame } from "./render.js"
+import { CellHeight, CellWidth, renderFrame } from "./render.js"
 
 export interface ExportRecordingOptions extends ReplayOptions {
   ffmpegPath?: string
@@ -98,8 +98,8 @@ export async function exportRecording(
   return {
     frames: frames.length,
     durationMs: final.atMs,
-    width: cols * 10,
-    height: rows * 20,
+    width: cols * CellWidth,
+    height: rows * CellHeight,
   }
 }
 

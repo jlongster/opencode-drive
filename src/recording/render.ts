@@ -2,8 +2,8 @@ import { fileURLToPath } from "node:url"
 import { GlobalFonts, createCanvas, type SKRSContext2D } from "@napi-rs/canvas"
 import { TextStyle, type CapturedFrame } from "./types.js"
 
-const CellWidth = 10
-const CellHeight = 20
+export const CellWidth = 10
+export const CellHeight = 20
 const FontSize = 16
 const FontFamily = "OpenCode Mono"
 const SymbolFontFamily = "OpenCode Symbols"
@@ -91,39 +91,40 @@ export function renderFrame(frame: CapturedFrame, options: RenderFrameOptions = 
       const hidden = Boolean(span.attributes & TextStyle.invisible)
       const foreground = inverse ? span.bg : span.fg
       const background = inverse ? span.fg : span.bg
+      const y = row * CellHeight
+      context.fillStyle = color(background)
+      context.fillRect(column * CellWidth, y, span.width * CellWidth, CellHeight)
+      if (hidden) {
+        column += span.width
+        continue
+      }
+      const italic = span.attributes & TextStyle.italic ? "italic " : ""
+      const weight = span.attributes & TextStyle.bold ? "700 " : "400 "
+      const font = `${italic}${weight}${FontSize}px "${FontFamily}", "${SymbolFontFamily}"`
+      context.font = font
+      context.fillStyle = color(foreground, span.attributes & TextStyle.dim ? 0.55 : 1)
+      const baseline = baselineOffset(context, font)
       let remaining = span.width
       for (const char of span.text) {
         const cells = Math.min(Math.max(1, Bun.stringWidth(char)), remaining)
-        context.fillStyle = color(background)
-        context.fillRect(column * CellWidth, row * CellHeight, cells * CellWidth, CellHeight)
-        if (!hidden) {
-          const italic = span.attributes & TextStyle.italic ? "italic " : ""
-          const weight = span.attributes & TextStyle.bold ? "700 " : "400 "
-          const font = `${italic}${weight}${FontSize}px "${FontFamily}", "${SymbolFontFamily}"`
-          context.font = font
-          context.fillStyle = color(foreground, span.attributes & TextStyle.dim ? 0.55 : 1)
-          const x = column * CellWidth
-          const y = row * CellHeight
-          if (!drawBlockElement(context, char, x, y))
-            context.fillText(
-              char,
-              x + (cells * CellWidth) / 2,
-              y + baselineOffset(context, font),
-              cells * CellWidth,
-            )
-          if (span.attributes & TextStyle.underline) {
-            context.fillRect(column * CellWidth, row * CellHeight + 17, cells * CellWidth, 1)
-          }
-          if (span.attributes & TextStyle.strikethrough) {
-            context.fillRect(column * CellWidth, row * CellHeight + 10, cells * CellWidth, 1)
-          }
+        const x = column * CellWidth
+        if (!drawBlockElement(context, char, x, y))
+          context.fillText(
+            char,
+            x + (cells * CellWidth) / 2,
+            y + baseline,
+            cells * CellWidth,
+          )
+        if (span.attributes & TextStyle.underline) {
+          context.fillRect(x, y + 17, cells * CellWidth, 1)
+        }
+        if (span.attributes & TextStyle.strikethrough) {
+          context.fillRect(x, y + 10, cells * CellWidth, 1)
         }
         column += cells
         remaining -= cells
       }
       if (remaining > 0) {
-        context.fillStyle = color(background)
-        context.fillRect(column * CellWidth, row * CellHeight, remaining * CellWidth, CellHeight)
         column += remaining
       }
     }

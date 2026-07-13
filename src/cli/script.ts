@@ -7,10 +7,8 @@ import type {
 } from "../client/index.js"
 import { createScriptFileSystem } from "../script/filesystem.js"
 import { hasGitMetadata } from "../script/project.js"
-import { exportRecording } from "../recording/index.js"
 import type {
   LlmOutput,
-  JsonValue,
   LlmRequest,
   LlmResponse,
   LlmServeHandler,
@@ -128,6 +126,7 @@ export async function runScript(
                 throw new Error(
                   `OpenCode recording timeline was not created: ${timeline}`,
                 )
+              const { exportRecording } = await import("../recording/export.js")
               await exportRecording(timeline, launched.recording.video)
               output = launched.recording.video
               onRecording?.(output)
@@ -681,7 +680,7 @@ function matchesElement(element: UiElement, query: UiElementQuery) {
 
 function isTitleRequest(request: LlmRequest) {
   const body = request.body
-  if (!isJsonObject(body)) return false
+  if (!isRecord(body)) return false
   const messages = body.messages
   if (!Array.isArray(messages)) return false
   const first = messages.find(isMessageObject)
@@ -700,26 +699,24 @@ function isTitleRequest(request: LlmRequest) {
 }
 
 function isMessageObject(value: unknown) {
-  return isJsonObject(value) && typeof value.role === "string"
+  return isRecord(value) && typeof value.role === "string"
 }
 
 function messageContent(message: unknown): string | undefined {
-  if (!isJsonObject(message)) return undefined
+  if (!isRecord(message)) return undefined
   const content = message.content
   if (typeof content === "string") return content
   if (!Array.isArray(content)) return undefined
   return content
     .map((part) => {
       if (typeof part === "string") return part
-      if (isJsonObject(part) && typeof part.text === "string") return part.text
+      if (isRecord(part) && typeof part.text === "string") return part.text
       return ""
     })
     .join("")
 }
 
-function isJsonObject(
-  value: unknown,
-): value is { readonly [key: string]: JsonValue } {
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
@@ -743,13 +740,8 @@ function isTimeoutError(error: unknown) {
 }
 
 function isScriptDefinition(value: unknown): value is ScriptDefinition {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return false
-  const script = value as {
-    readonly project?: unknown
-    readonly run?: unknown
-    readonly setup?: unknown
-  }
+  if (!isRecord(value)) return false
+  const script = value
   return (
     typeof script.run === "function" &&
     (script.project === undefined || isScriptProject(script.project)) &&
@@ -759,13 +751,11 @@ function isScriptDefinition(value: unknown): value is ScriptDefinition {
 }
 
 function isScriptProject(value: unknown) {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return false
-  const project = value as { readonly files?: unknown; readonly git?: unknown }
+  if (!isRecord(value)) return false
+  const project = value
   if (project.git !== undefined && typeof project.git !== "boolean") return false
   if (project.files === undefined) return true
-  if (typeof project.files !== "object" || project.files === null || Array.isArray(project.files))
-    return false
+  if (!isRecord(project.files)) return false
   const prototype = Object.getPrototypeOf(project.files)
   if (prototype !== Object.prototype && prototype !== null) return false
   return Object.values(project.files).every(

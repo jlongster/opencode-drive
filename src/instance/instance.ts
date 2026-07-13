@@ -112,25 +112,23 @@ export async function launchInstance(options: LaunchOptions) {
     await Bun.write(configPath, `${JSON.stringify(config, undefined, 2)}\n`)
   }
   if (options.project?.git) await commitScriptProject(files)
-  const environment = cleanEnv(
-    stripGitEnvironment({
-      ...process.env,
-      ...options.env,
-      OPENCODE_SIMULATE: "1",
-      OPENCODE_DRIVE_SCRIPTED: options.scripted ? "1" : undefined,
-      DRIVE_REGISTRY_DIR: drive,
-      OPENCODE_DRIVE_RENDERER: options.visible ? "visible" : "headless",
-      OPENCODE_DRIVE_MEDIA_DIR: media,
-      OPENCODE_CONFIG_DIR: join(files, ".opencode"),
-      OPENCODE_DB: ":memory:",
-      OPENCODE_LOG_LEVEL: !options.visible ? "DEBUG" : process.env.OPENCODE_LOG_LEVEL,
-      OPENCODE_TEST_HOME: artifacts,
-      XDG_CACHE_HOME: join(artifacts, "home", ".cache"),
-      XDG_CONFIG_HOME: join(artifacts, "home", ".config"),
-      XDG_DATA_HOME: logs,
-      XDG_STATE_HOME: join(artifacts, "home", ".local", "state"),
-    }),
-  )
+  const environment = stripGitEnvironment({
+    ...process.env,
+    ...options.env,
+    OPENCODE_SIMULATE: "1",
+    OPENCODE_DRIVE_SCRIPTED: options.scripted ? "1" : undefined,
+    DRIVE_REGISTRY_DIR: drive,
+    OPENCODE_DRIVE_RENDERER: options.visible ? "visible" : "headless",
+    OPENCODE_DRIVE_MEDIA_DIR: media,
+    OPENCODE_CONFIG_DIR: join(files, ".opencode"),
+    OPENCODE_DB: ":memory:",
+    OPENCODE_LOG_LEVEL: !options.visible ? "DEBUG" : process.env.OPENCODE_LOG_LEVEL,
+    OPENCODE_TEST_HOME: artifacts,
+    XDG_CACHE_HOME: join(artifacts, "home", ".cache"),
+    XDG_CONFIG_HOME: join(artifacts, "home", ".config"),
+    XDG_DATA_HOME: logs,
+    XDG_STATE_HOME: join(artifacts, "home", ".local", "state"),
+  })
   const command = options.dev
     ? await prepareDev(artifacts, options.dev)
     : options.command?.length
@@ -517,10 +515,4 @@ function open(url: string) {
       once: true,
     })
   })
-}
-
-function cleanEnv(env: Readonly<Record<string, string | undefined>>) {
-  return Object.fromEntries(
-    Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined),
-  )
 }

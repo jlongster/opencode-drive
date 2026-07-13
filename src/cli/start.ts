@@ -2,7 +2,6 @@ import { initializeInstance, launchInstance } from "../instance/instance.js"
 import { mkdir, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { connectSimulation } from "../client/index.js"
-import { exportRecording } from "../recording/index.js"
 import { connectMockBackend } from "./mock-backend.js"
 import { createResponseSettings } from "./response-generator.js"
 import { loadScript, runScript } from "./script.js"
@@ -334,6 +333,7 @@ async function finishRecording(
     throw new Error(`OpenCode returned an unexpected recording path: ${timeline}`)
   if (!(await Bun.file(timeline).exists()))
     throw new Error(`OpenCode recording timeline was not created: ${timeline}`)
+  const { exportRecording } = await import("../recording/export.js")
   await exportRecording(timeline, expected.video, { onProgress })
   return expected.video
 }
