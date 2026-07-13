@@ -48,8 +48,10 @@ It will output information about the run, including paths to log files which you
 to inspect what happened. If you need to dig into failures that aren't clear, read those log
 files. If the script is unsuccessful, automatically fix the script and run it again.
 
-Scripts use one typed definition object. `setup` runs before OpenCode starts,
-and `fs.writeFile` always writes inside the simulated project.
+Scripts use one typed definition object. `project.files` seeds the isolated
+project, `project.git: true` creates a committed baseline, and `setup` runs
+before OpenCode starts. `fs.writeFile` always writes inside the simulated
+project, and setup-created files are included in that baseline.
 
 You can read the full typed API here: https://raw.githubusercontent.com/jlongster/opencode-drive/refs/heads/main/src/script/types.ts
 
@@ -57,9 +59,14 @@ You can read the full typed API here: https://raw.githubusercontent.com/jlongste
 import { defineScript } from "opencode-drive"
 
 export default defineScript({
-  async setup({ fs, config }) {
+  project: {
+    git: true,
+    files: {
+      "src/example.ts": "export const value = 1\n",
+    },
+  },
+  setup({ config }) {
     config.autoupdate = false
-    await fs.writeFile("src/example.ts", "export const value = 1\n")
   },
 
   async run({ ui, llm }) {
@@ -69,6 +76,9 @@ export default defineScript({
   },
 })
 ```
+
+Omit `project.git` when an `init` step supplies a prepared repository. Drive
+will not replace existing Git metadata.
 
 `setup` receives the current OpenCode config object, which starts from the
 default drive config unless the prepared instance already has one. When a script

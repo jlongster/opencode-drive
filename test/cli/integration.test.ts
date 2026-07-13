@@ -692,7 +692,10 @@ describe("opencode-drive", () => {
     expect(Date.now() - started).toBeLessThan(5_000)
     const artifacts = artifactPath(stderr)
     roots.push(artifacts)
-    expect(await Bun.file(join(artifacts, "script-result.json")).json()).toMatchObject({ matches: true })
+    expect(await Bun.file(join(artifacts, "script-result.json")).json()).toMatchObject({
+      gitWriteError: expect.stringContaining("must not modify Git metadata"),
+      matches: true,
+    })
     expect(await Bun.file(join(artifacts, "files", ".opencode", "opencode.jsonc")).json()).toMatchObject({
       autoupdate: false,
       model: "simulation/gpt-sim-model",
@@ -725,6 +728,13 @@ describe("opencode-drive", () => {
     expect(await Bun.file(join(artifacts, "seeded-at-launch.txt")).text()).toBe(
       "export const seeded = true\n",
     )
+    expect(await Bun.file(join(artifacts, "files", "setup-seeded.txt")).text()).toBe(
+      "included in baseline\n",
+    )
+    expect(await Bun.$`git status --porcelain`.cwd(join(artifacts, "files")).text()).toBe("")
+    expect(
+      (await Bun.$`git log -1 --format=%s`.cwd(join(artifacts, "files")).text()).trim(),
+    ).toBe("Initial commit")
     expect(await realpath(await Bun.file(join(artifacts, "child-cwd.txt")).text())).toBe(
       await realpath(join(artifacts, "files")),
     )
@@ -736,6 +746,33 @@ describe("opencode-drive", () => {
     expect(running(pid)).toBe(false)
     expect(await Bun.file(join(root, "registry", `${name}.json`)).exists()).toBe(false)
   })
+
+  test("protects Git metadata in prepared project scripts", async () => {
+    const root = await temporary()
+    const name = "prepared-git-script-test"
+    const initialized = spawn(["init", "--name", name], root)
+    expect(await initialized.exited).toBe(0)
+    const artifacts = (await new Response(initialized.stdout).text()).trim()
+    const files = join(artifacts, "files")
+    roots.push(artifacts)
+    await rm(join(files, ".git"), { recursive: true })
+    await Bun.$`git init --quiet --initial-branch=main`.cwd(files)
+    await Bun.$`git add --all`.cwd(files)
+    await Bun.$`git -c user.name=Fixture -c user.email=fixture@example.com commit --quiet --message=Prepared`.cwd(files)
+    const gitConfig = await Bun.file(join(files, ".git", "config")).text()
+
+    const started = spawn(
+      ["start", "--name", name, "--script", fixture("prepared-git-script.ts")],
+      root,
+    )
+    expect(await started.exited).toBe(0)
+    expect(await Bun.file(join(artifacts, "prepared-git-result.json")).json()).toEqual({
+      runGitError: expect.stringContaining("must not modify Git metadata"),
+      setupGitError: expect.stringContaining("must not modify Git metadata"),
+    })
+    expect(await Bun.file(join(files, ".git", "config")).text()).toBe(gitConfig)
+    expect((await Bun.$`git log -1 --format=%s`.cwd(files).text()).trim()).toBe("Prepared")
+  }, 10_000)
 
   test("cleans artifacts after a successful scripted run", async () => {
     const root = await temporary()
@@ -832,7 +869,7 @@ describe("opencode-drive", () => {
     await mkdir(directory, { recursive: true })
     await Bun.write(
       join(directory, "valid.ts"),
-      'import { defineScript, wait } from "opencode-drive"\nexport default defineScript({ async run() { await wait(1) } })\n',
+      'import { defineScript, wait } from "opencode-drive"\nexport default defineScript({ project: { git: true, files: { "src/index.ts": "export {}\\n" } }, async run() { await wait(1) } })\n',
     )
     const checked = spawn(["check", join(directory, "valid.ts")], root)
     expect(await checked.exited).toBe(0)
@@ -930,7 +967,7 @@ describe("opencode-drive", () => {
     )
     expect(await child.exited).toBe(1)
     expect(await new Response(child.stderr).text()).toContain(
-      "script must default-export defineScript({ setup?, run })",
+      "script must default-export defineScript({ project?, setup?, run })",
     )
   })
 

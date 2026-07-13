@@ -75,9 +75,14 @@ Scripted runs use one fully typed definition:
 import { defineScript } from "opencode-drive"
 
 export default defineScript({
-  async setup({ fs, config }) {
+  project: {
+    git: true,
+    files: {
+      "src/example.ts": "export const value = 1\n",
+    },
+  },
+  setup({ config }) {
     config.autoupdate = false
-    await fs.writeFile("src/example.ts", "export const value = 1\n")
   },
   async run({ ui, llm }) {
     await ui.submit("Read src/example.ts")
@@ -86,6 +91,11 @@ export default defineScript({
   },
 })
 ```
+
+`project.files` seeds the isolated project before `setup` runs. With
+`project.git: true`, Drive creates a fresh repository and commits the complete
+pre-launch state, including files written in `setup`. A prepared repository is
+never replaced; omit `project.git` when an `init` step supplies Git history.
 
 Type-check every new or edited script before running it:
 

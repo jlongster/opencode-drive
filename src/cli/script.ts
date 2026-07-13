@@ -6,6 +6,7 @@ import type {
   SimulationClient,
 } from "../client/index.js"
 import { createScriptFileSystem } from "../script/filesystem.js"
+import { hasGitMetadata } from "../script/project.js"
 import { exportRecording } from "../recording/index.js"
 import type {
   LlmOutput,
@@ -35,7 +36,7 @@ export async function loadScript(file: string): Promise<ScriptDefinition> {
     pathToFileURL(resolve(file)).href
   )
   if (!isScriptDefinition(module.default))
-    throw new Error("script must default-export defineScript({ setup?, run })")
+    throw new Error("script must default-export defineScript({ project?, setup?, run })")
   return module.default
 }
 
@@ -200,8 +201,9 @@ export async function runScript(
   signal.addEventListener("abort", abort, { once: true })
   try {
     if (!("launch" in script)) await server.launch()
+    const protectGit = await hasGitMetadata(join(artifacts, "files"))
     const context = {
-      fs: createScriptFileSystem(join(artifacts, "files")),
+      fs: createScriptFileSystem(join(artifacts, "files"), { git: protectGit }),
       clients,
       server,
       llm,
@@ -743,10 +745,30 @@ function isTimeoutError(error: unknown) {
 function isScriptDefinition(value: unknown): value is ScriptDefinition {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     return false
-  const script = value as { readonly run?: unknown; readonly setup?: unknown }
+  const script = value as {
+    readonly project?: unknown
+    readonly run?: unknown
+    readonly setup?: unknown
+  }
   return (
     typeof script.run === "function" &&
+    (script.project === undefined || isScriptProject(script.project)) &&
     (script.setup === undefined || typeof script.setup === "function") &&
     (!("launch" in script) || script.launch === "manual")
+  )
+}
+
+function isScriptProject(value: unknown) {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return false
+  const project = value as { readonly files?: unknown; readonly git?: unknown }
+  if (project.git !== undefined && typeof project.git !== "boolean") return false
+  if (project.files === undefined) return true
+  if (typeof project.files !== "object" || project.files === null || Array.isArray(project.files))
+    return false
+  const prototype = Object.getPrototypeOf(project.files)
+  if (prototype !== Object.prototype && prototype !== null) return false
+  return Object.values(project.files).every(
+    (contents) => typeof contents === "string" || contents instanceof Uint8Array,
   )
 }

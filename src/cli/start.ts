@@ -65,6 +65,7 @@ export async function start(options: StartOptions) {
     visible: options.visible,
     record: options.record,
     viewport: script?.viewport,
+    project: script?.project,
     setup: script?.setup,
     log: logSuccess,
   }).catch(async (error) => {

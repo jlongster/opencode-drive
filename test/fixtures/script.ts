@@ -2,12 +2,22 @@ import { join } from "node:path"
 import { defineScript } from "../../src/index.js"
 
 export default defineScript({
+  project: {
+    git: true,
+    files: {
+      "src/seeded.ts": "export const seeded = true\n",
+    },
+  },
   async setup({ fs, config }) {
     config.autoupdate = false
-    await fs.writeFile("src/seeded.ts", "export const seeded = true\n")
+    await fs.writeFile("setup-seeded.txt", "included in baseline\n")
   },
 
-  async run({ artifacts, llm, ui }) {
+  async run({ artifacts, fs, llm, ui }) {
+    const gitWriteError = await fs
+      .writeFile(".GIT/config", "no")
+      .then(() => undefined)
+      .catch((error: unknown) => String(error))
     const editor = await ui.getElement(1)
     await ui.focus(editor)
     await ui.click(editor)
@@ -19,7 +29,7 @@ export default defineScript({
     const state = await ui.state()
     await Bun.write(
       join(artifacts, "script-result.json"),
-      `${JSON.stringify({ focused: state.focused, matches }, undefined, 2)}\n`,
+      `${JSON.stringify({ focused: state.focused, gitWriteError, matches }, undefined, 2)}\n`,
     )
   },
 })
