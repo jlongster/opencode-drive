@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import {
   BackendSimulationClient,
   BackendSimulationError,
@@ -10,12 +10,7 @@ import {
   defaultBackendPort,
   defaultPort,
 } from "../../src/client/index.js"
-import {
-  type ReceivedRequest,
-  sendError,
-  sendResult,
-  startTransportPeer,
-} from "./transport-peer.js"
+import { type ReceivedRequest, sendError, sendResult, startTransportPeer } from "./transport-peer.js"
 
 function captureRequests() {
   const queued: ReceivedRequest[] = []
@@ -93,9 +88,7 @@ describe("OpenCode simulation transport lifecycle", () => {
       expect(stateRequest.request.method).toBe("ui.state")
       expect(matchesRequest.request.method).toBe("ui.matches")
 
-      stateRequest.socket.send(
-        JSON.stringify({ jsonrpc: "2.0", id: 999, result: "unknown" }),
-      )
+      stateRequest.socket.send(JSON.stringify({ jsonrpc: "2.0", id: 999, result: "unknown" }))
       sendResult(matchesRequest.socket, matchesRequest.request, true)
       sendResult(stateRequest.socket, stateRequest.request, state)
 
@@ -151,10 +144,7 @@ describe("OpenCode simulation transport lifecycle", () => {
       sendResult(recoveredRequest.socket, recoveredRequest.request, true)
 
       expect(await recovered).toBe(true)
-      expect(peer.received.map(({ request }) => request.method)).toEqual([
-        "ui.state",
-        "ui.matches",
-      ])
+      expect(peer.received.map(({ request }) => request.method)).toEqual(["ui.state", "ui.matches"])
     } finally {
       client.close()
       await peer.stop()
@@ -228,14 +218,48 @@ describe("OpenCode simulation transport lifecycle", () => {
         method: "ui.state",
       })
 
-      const backendError = await backend
-        .call("llm.attach")
-        .catch((error) => error)
+      const backendError = await backend.call("llm.attach").catch((error) => error)
       expect(backendError).toBeInstanceOf(BackendSimulationError)
       expect(backendError).toMatchObject({
         message: "connection is not open",
         method: "llm.attach",
       })
+    } finally {
+      ui.close()
+      backend.close()
+      await Promise.all([uiPeer.stop(), backendPeer.stop()])
+    }
+  })
+
+  test("local close rejects pending UI and backend calls as connection closed", async () => {
+    const uiCapture = captureRequests()
+    const backendCapture = captureRequests()
+    const uiPeer = startTransportPeer(uiCapture.onRequest)
+    const backendPeer = startTransportPeer(backendCapture.onRequest)
+    const [ui, backend] = await Promise.all([
+      connectSimulation({ url: uiPeer.url }),
+      connectBackendSimulation({ url: backendPeer.url }),
+    ])
+
+    try {
+      const uiResult = ui.state().catch((error) => error)
+      const backendResult = backend.call("llm.attach").catch((error) => error)
+      await Promise.all([uiCapture.next(), backendCapture.next()])
+
+      ui.close()
+      backend.close()
+
+      expect(await uiResult).toMatchObject({
+        name: "SimulationError",
+        message: "connection closed",
+        method: "ui.state",
+      })
+      expect(await backendResult).toMatchObject({
+        name: "BackendSimulationError",
+        message: "connection closed",
+        method: "llm.attach",
+      })
+      await backend.closed
     } finally {
       ui.close()
       backend.close()

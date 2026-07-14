@@ -291,7 +291,7 @@ The architecture needs only a few service seams:
 
 | Service | Real adapters |
 |---|---|
-| `ProcessSpawner` | Bun process adapter and deterministic test adapter |
+| `ProcessSpawner` | Effect `ChildProcessSpawner` adapter and deterministic test adapter; legacy CLI launch remains Bun-backed |
 | `SimulationConnector` | Canonical WebSocket adapter and in-memory test adapter |
 | `RecordingExporter` | Canvas/ffmpeg adapter and injected test adapter |
 | `InstanceRegistry` | Filesystem registry and deterministic test adapter |

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { extractCommands } from "../../src/cli/parse.js"
 
 describe("drive CLI parser", () => {
@@ -26,16 +26,7 @@ describe("drive CLI parser", () => {
   })
 
   test("keeps the custom OpenCode argv intact", () => {
-    expect(
-      extractCommands([
-        "start",
-        "--",
-        "bun",
-        "app.ts",
-        "--standalone",
-        "--help",
-      ]),
-    ).toEqual({
+    expect(extractCommands(["start", "--", "bun", "app.ts", "--standalone", "--help"])).toEqual({
       args: ["start"],
       app: ["bun", "app.ts", "--standalone", "--help"],
       commands: [],
@@ -43,14 +34,10 @@ describe("drive CLI parser", () => {
   })
 
   test("rejects unknown namespaced commands", () => {
-    expect(() => extractCommands(["send", "--command.unknown"])).toThrow(
-      "unknown drive command",
-    )
+    expect(() => extractCommands(["send", "--command.unknown"])).toThrow("unknown drive command")
   })
 
   test("rejects LLM commands", () => {
-    expect(() => extractCommands(["send", "--command.llm.pending"])).toThrow(
-      "unknown drive command",
-    )
+    expect(() => extractCommands(["send", "--command.llm.pending"])).toThrow("unknown drive command")
   })
 })

@@ -1,15 +1,6 @@
-import { describe, expect, test } from "bun:test"
-import {
-  Frontend,
-  SimulationClient,
-  SimulationError,
-  connectSimulation,
-} from "../../src/client/index.js"
-import {
-  sendError,
-  sendResult,
-  startTransportPeer,
-} from "./transport-peer.js"
+import { describe, expect, test } from "vitest"
+import { Frontend, SimulationClient, SimulationError, connectSimulation } from "../../src/client/index.js"
+import { sendError, sendResult, startTransportPeer } from "./transport-peer.js"
 
 const state: Frontend.State = {
   focused: { renderable: 1, editor: true },
@@ -54,9 +45,7 @@ describe("OpenCode UI simulation transport", () => {
       expect(await client.finishRecording()).toBe("/tmp/recording.jsonl")
       expect(await client.typeText("hello")).toEqual(state)
       expect(await client.pressKey("x")).toEqual(state)
-      expect(
-        await client.pressKey("x", { ctrl: true, shift: false }),
-      ).toEqual(state)
+      expect(await client.pressKey("x", { ctrl: true, shift: false })).toEqual(state)
       expect(await client.pressKey("escape")).toEqual(state)
       expect(await client.pressEnter()).toEqual(state)
       expect(await client.pressArrow("left")).toEqual(state)
@@ -145,8 +134,7 @@ describe("OpenCode UI simulation transport", () => {
         },
       ])
 
-      for (const { request } of peer.received)
-        expect(Frontend.decodeRequest(request)).toEqual(request)
+      for (const { request } of peer.received) expect(Frontend.decodeRequest(request)).toEqual(request)
     } finally {
       client.close()
       await peer.stop()
@@ -154,9 +142,7 @@ describe("OpenCode UI simulation transport", () => {
   })
 
   test("rejects schema-invalid UI requests", () => {
-    expect(() =>
-      Frontend.decodeRequest({ jsonrpc: "2.0", method: "ui.type", params: {} }),
-    ).toThrow()
+    expect(() => Frontend.decodeRequest({ jsonrpc: "2.0", method: "ui.type", params: {} })).toThrow()
     expect(() =>
       Frontend.decodeRequest({
         jsonrpc: "2.0",

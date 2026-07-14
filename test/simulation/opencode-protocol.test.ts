@@ -1,20 +1,9 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
-import {
-  RpcClient,
-  RpcClientError,
-  RpcMessage,
-} from "effect/unstable/rpc"
+import { RpcClient, RpcClientError, RpcMessage } from "effect/unstable/rpc"
 import * as OpenCodeRpcProtocol from "../../src/simulation/opencode-protocol.js"
-import {
-  SimulationRequestError,
-  UiRpcs,
-} from "../../src/simulation/rpc.js"
-import {
-  sendError,
-  sendResult,
-  startTransportPeer,
-} from "./transport-peer.js"
+import { SimulationRequestError, UiRpcs } from "../../src/simulation/rpc.js"
+import { sendError, sendResult, startTransportPeer } from "./transport-peer.js"
 
 const state = {
   focused: { renderable: 1, editor: true },
@@ -22,7 +11,7 @@ const state = {
 }
 
 describe("OpenCode Effect RPC compatibility protocol", () => {
-  test("drives generated UI clients over exact OpenCode JSON-RPC", async () => {
+  it.live("drives generated UI clients over exact OpenCode JSON-RPC", () => {
     const notifications: unknown[] = []
     const peer = startTransportPeer(({ request, socket }) => {
       if (request.method === "ui.matches") {
@@ -45,44 +34,28 @@ describe("OpenCode Effect RPC compatibility protocol", () => {
       sendResult(socket, request, state)
     })
 
-    try {
-      await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const protocol = yield* OpenCodeRpcProtocol.make(peer.url, {
-              onNotification: (notification) =>
-                Effect.sync(() => notifications.push(notification)),
-            })
-            const client = yield* RpcClient.make(UiRpcs).pipe(
-              Effect.provideService(RpcClient.Protocol, protocol),
-            )
+    return Effect.gen(function* () {
+      yield* Effect.addFinalizer(() => Effect.promise(() => peer.stop()))
+      const protocol = yield* OpenCodeRpcProtocol.make(peer.url, {
+        onNotification: (notification) => Effect.sync(() => notifications.push(notification)),
+      })
+      const client = yield* RpcClient.make(UiRpcs).pipe(Effect.provideService(RpcClient.Protocol, protocol))
 
-            expect(yield* client["ui.state"]()).toEqual(state)
-            expect(yield* client["ui.screenshot"](undefined)).toBe(
-              "/tmp/screen.png",
-            )
-            expect(yield* client["ui.screenshot"]({ name: "home" })).toBe(
-              "/tmp/home.png",
-            )
+      expect(yield* client["ui.state"]()).toEqual(state)
+      expect(yield* client["ui.screenshot"](undefined)).toBe("/tmp/screen.png")
+      expect(yield* client["ui.screenshot"]({ name: "home" })).toBe("/tmp/home.png")
 
-            const error = yield* client["ui.matches"]({ text: "fail" }).pipe(
-              Effect.flip,
-            )
-            expect(error).toBeInstanceOf(SimulationRequestError)
-            expect(error).toMatchObject({
-              method: "ui.matches",
-              code: -32000,
-              message: "match failed",
-            })
-          }),
-        ),
-      )
+      const error = yield* client["ui.matches"]({ text: "fail" }).pipe(Effect.flip)
+      expect(error).toBeInstanceOf(SimulationRequestError)
+      expect(error).toMatchObject({
+        method: "ui.matches",
+        code: -32000,
+        message: "match failed",
+      })
 
       const firstId = peer.received[0]!.request.id
       expect(typeof firstId).toBe("number")
-      expect(notifications).toEqual([
-        { method: "server.status", params: { ready: true } },
-      ])
+      expect(notifications).toEqual([{ method: "server.status", params: { ready: true } }])
       expect(peer.received.map(({ request }) => request)).toEqual([
         { jsonrpc: "2.0", id: firstId, method: "ui.state" },
         {
@@ -103,19 +76,19 @@ describe("OpenCode Effect RPC compatibility protocol", () => {
           params: { text: "fail" },
         },
       ])
-    } finally {
-      await peer.stop()
-    }
+    })
   })
 
-  test("correlates multiple generated clients through local wire IDs", async () => {
+  it.live("correlates multiple generated clients through local wire IDs", () => {
     const secondState = {
       focused: { renderable: 2, editor: false },
       elements: [],
     }
-    const received: Array<Parameters<typeof sendResult>[1] & {
-      readonly socket: Bun.ServerWebSocket<undefined>
-    }> = []
+    const received: Array<
+      Parameters<typeof sendResult>[1] & {
+        readonly socket: Bun.ServerWebSocket<undefined>
+      }
+    > = []
     const peer = startTransportPeer(({ request, socket }) => {
       received.push({ ...request, socket })
       if (received.length !== 2) return
@@ -123,66 +96,41 @@ describe("OpenCode Effect RPC compatibility protocol", () => {
       sendResult(received[0]!.socket, received[0]!, state)
     })
 
-    try {
-      const results = await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const protocol = yield* OpenCodeRpcProtocol.make(peer.url)
-            const options = {
-              generateRequestId: () => RpcMessage.RequestId(7),
-            }
-            const first = yield* RpcClient.make(UiRpcs, options).pipe(
-              Effect.provideService(RpcClient.Protocol, protocol),
-            )
-            const second = yield* RpcClient.make(UiRpcs, options).pipe(
-              Effect.provideService(RpcClient.Protocol, protocol),
-            )
-            return yield* Effect.all(
-              [first["ui.state"](), second["ui.state"]()],
-              { concurrency: "unbounded" },
-            )
-          }),
-        ),
-      )
+    return Effect.gen(function* () {
+      yield* Effect.addFinalizer(() => Effect.promise(() => peer.stop()))
+      const protocol = yield* OpenCodeRpcProtocol.make(peer.url)
+      const options = {
+        generateRequestId: () => RpcMessage.RequestId(7),
+      }
+      const first = yield* RpcClient.make(UiRpcs, options).pipe(Effect.provideService(RpcClient.Protocol, protocol))
+      const second = yield* RpcClient.make(UiRpcs, options).pipe(Effect.provideService(RpcClient.Protocol, protocol))
+      const results = yield* Effect.all([first["ui.state"](), second["ui.state"]()], { concurrency: "unbounded" })
 
       expect(results).toEqual([state, secondState])
       expect(peer.received.map(({ request }) => request)).toEqual([
         { jsonrpc: "2.0", id: 1, method: "ui.state" },
         { jsonrpc: "2.0", id: 2, method: "ui.state" },
       ])
-    } finally {
-      await peer.stop()
-    }
+    })
   })
 
-  test("persists fatal protocol failures for later requests", async () => {
+  it.live("persists fatal protocol failures for later requests", () => {
     const peer = startTransportPeer(({ request, socket }) =>
       socket.send(JSON.stringify({ jsonrpc: "2.0", id: request.id })),
     )
 
-    try {
-      await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const protocol = yield* OpenCodeRpcProtocol.make(peer.url)
-            const client = yield* RpcClient.make(UiRpcs).pipe(
-              Effect.provideService(RpcClient.Protocol, protocol),
-            )
+    return Effect.gen(function* () {
+      yield* Effect.addFinalizer(() => Effect.promise(() => peer.stop()))
+      const protocol = yield* OpenCodeRpcProtocol.make(peer.url)
+      const client = yield* RpcClient.make(UiRpcs).pipe(Effect.provideService(RpcClient.Protocol, protocol))
 
-            const first = yield* client["ui.state"]().pipe(Effect.flip)
-            expect(first).toBeInstanceOf(RpcClientError.RpcClientError)
-            expect(first.message).toContain(
-              "JSON-RPC response must contain result or error",
-            )
+      const first = yield* client["ui.state"]().pipe(Effect.flip)
+      expect(first).toBeInstanceOf(RpcClientError.RpcClientError)
+      expect(first.message).toContain("JSON-RPC response must contain result or error")
 
-            const second = yield* client["ui.state"]().pipe(Effect.flip)
-            expect(second).toBe(first)
-          }),
-        ),
-      )
+      const second = yield* client["ui.state"]().pipe(Effect.flip)
+      expect(second).toBe(first)
       expect(peer.received).toHaveLength(1)
-    } finally {
-      await peer.stop()
-    }
+    })
   })
 })

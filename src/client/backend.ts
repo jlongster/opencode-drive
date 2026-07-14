@@ -1,32 +1,15 @@
-import { Backend, type JsonRpc } from "./protocol.js"
+import * as Effect from "effect/Effect"
+import * as Exit from "effect/Exit"
+import * as Fiber from "effect/Fiber"
+import * as Scope from "effect/Scope"
+import * as Schema from "effect/Schema"
+import * as Stream from "effect/Stream"
+import * as SimulationConnector from "../simulation/connector.js"
+import type { BackendConnection } from "../simulation/connector.js"
+import { Backend } from "./protocol.js"
 import { logError } from "../log.js"
 
 const defaultBackendPort = 40950
-
-type BackendMethods = {
-  readonly "llm.attach": {
-    readonly params: undefined
-    readonly result: { readonly attached: true }
-  }
-  readonly "llm.chunk": {
-    readonly params: {
-      readonly id: string
-      readonly items: ReadonlyArray<Backend.Item>
-    }
-    readonly result: { readonly ok: true }
-  }
-  readonly "llm.finish": {
-    readonly params: Partial<Backend.FinishParams> &
-      Pick<Backend.FinishParams, "id">
-    readonly result: { readonly ok: true }
-  }
-  readonly "llm.disconnect": {
-    readonly params: Backend.DisconnectParams
-    readonly result: { readonly ok: true }
-  }
-}
-
-type BackendMethodName = keyof BackendMethods
 
 export interface BackendSimulationClientOptions {
   readonly url?: string
@@ -45,45 +28,33 @@ export class BackendSimulationError extends Error {
   }
 }
 
-interface Waiter {
-  readonly method: string
-  readonly resolve: (value: unknown) => void
-  readonly reject: (error: Error) => void
-  readonly timer: ReturnType<typeof setTimeout>
-}
-
 export class BackendSimulationClient {
   readonly url: string
   readonly closed: Promise<void>
 
-  private readonly socket: WebSocket
-  private readonly timeout: number
-  private nextId = 1
   private closing = false
+  private attached = false
   private readonly resolveClosed: () => void
-  private readonly pending = new Map<number, Waiter>()
-  private readonly llmRequests = new Set<
-    (request: Backend.OpenedExchange) => void
+  private readonly listeners = new Set<
+    (request: Backend.OpenedExchange) => void | Promise<void>
   >()
 
-  private constructor(socket: WebSocket, url: string, timeout: number) {
-    this.socket = socket
+  private constructor(
+    private readonly scope: Scope.Closeable,
+    private readonly connection: BackendConnection,
+    url: string,
+    private readonly timeout: number,
+  ) {
     this.url = url
-    this.timeout = timeout
     const closed = Promise.withResolvers<void>()
     this.closed = closed.promise
     this.resolveClosed = closed.resolve
-    socket.addEventListener("message", (event) =>
-      this.onMessage(String(event.data)),
+    Effect.runFork(
+      connection.closed.pipe(
+        Effect.tap(() => Effect.sync(closed.resolve)),
+        Effect.forkIn(scope),
+      ),
     )
-    socket.addEventListener("close", () => {
-      this.resolveClosed()
-      this.rejectAll(new BackendSimulationError("connection closed"))
-    })
-    socket.addEventListener("error", () => {
-      this.resolveClosed()
-      this.rejectAll(new BackendSimulationError("connection error"))
-    })
   }
 
   static async connect(
@@ -91,67 +62,126 @@ export class BackendSimulationClient {
   ): Promise<BackendSimulationClient> {
     const timeout = options?.timeout ?? 30_000
     if (options?.url !== undefined)
-      return new BackendSimulationClient(
-        await open(options.url),
-        options.url,
-        timeout,
-      )
+      return BackendSimulationClient.acquire(options.url, timeout)
+
     const first = options?.port ?? defaultBackendPort
     const attempts = options?.portAttempts ?? 10
     for (let offset = 0; offset < attempts; offset++) {
       const url = `ws://127.0.0.1:${first + offset}`
       try {
-        return new BackendSimulationClient(await open(url), url, timeout)
-      } catch {}
+        return await BackendSimulationClient.acquire(url, timeout)
+      } catch {
+        // Occupied by another service or not listening; try the next port.
+      }
     }
     throw new BackendSimulationError(
       `no backend simulation server found on ports ${first}-${first + attempts - 1}`,
     )
   }
 
-  async call<M extends BackendMethodName>(
-    method: M,
-    params?: BackendMethods[M]["params"],
-  ): Promise<BackendMethods[M]["result"]> {
-    if (this.socket.readyState !== WebSocket.OPEN)
-      throw new BackendSimulationError("connection is not open", method)
-    const id = this.nextId++
-    const promise = new Promise<unknown>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id)
-        reject(
-          new BackendSimulationError(
-            `timed out after ${this.timeout}ms`,
+  call(method: "llm.attach"): Promise<Backend.Attached>
+  call(method: "llm.chunk", params: Backend.ChunkParams): Promise<Backend.Ok>
+  call(method: "llm.finish", params: Backend.FinishPayload): Promise<Backend.Ok>
+  call(
+    method: "llm.disconnect",
+    params: Backend.DisconnectParams,
+  ): Promise<Backend.Ok>
+  call(
+    method: "llm.attach" | "llm.chunk" | "llm.finish" | "llm.disconnect",
+    params?:
+      | Backend.ChunkParams
+      | Backend.FinishPayload
+      | Backend.DisconnectParams,
+  ): Promise<Backend.Attached | Backend.Ok> {
+    if (this.closing)
+      return Promise.reject(
+        new BackendSimulationError("connection is not open", method),
+      )
+    try {
+      switch (method) {
+        case "llm.attach":
+          return this.run(method, this.connection.attach())
+        case "llm.chunk": {
+          const value = Schema.decodeUnknownSync(Backend.ChunkParams)(params)
+          return this.run(method, this.connection.rpc["llm.chunk"](value))
+        }
+        case "llm.finish": {
+          const value = Schema.decodeUnknownSync(Backend.FinishPayload)(params)
+          return this.run(method, this.connection.rpc["llm.finish"](value))
+        }
+        case "llm.disconnect": {
+          const value = Schema.decodeUnknownSync(Backend.DisconnectParams)(params)
+          return this.run(
             method,
-          ),
-        )
-      }, this.timeout)
-      this.pending.set(id, { method, resolve, reject, timer })
-    })
-    this.socket.send(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id,
-        method,
-        ...(params === undefined ? {} : { params }),
-      }),
-    )
-    return (await promise) as BackendMethods[M]["result"]
+            this.connection.rpc["llm.disconnect"](value),
+          )
+        }
+      }
+    } catch (cause) {
+      return Promise.reject(
+        new BackendSimulationError(
+          cause instanceof Error ? cause.message : String(cause),
+          method,
+        ),
+      )
+    }
+    return Promise.reject(new BackendSimulationError("unknown backend method", method))
   }
 
   async attach(
     onRequest: (request: Backend.OpenedExchange) => void | Promise<void>,
   ) {
-    this.llmRequests.add((request) => {
-      void Promise.resolve(onRequest(request)).catch((error) => {
-        if (!this.closing) logError(error instanceof Error ? error.message : String(error))
-      })
-    })
-    return await this.call("llm.attach")
+    this.listeners.add(onRequest)
+    if (!this.attached) {
+      this.attached = true
+      const worker = await Effect.runPromise(
+        this.connection.requests.pipe(
+          Stream.runForEach((request) =>
+            Effect.forEach(
+              this.listeners,
+              (listener) =>
+                Effect.try({
+                  try: () => listener(request),
+                  catch: (cause) => cause,
+                }).pipe(
+                  Effect.flatMap((result) =>
+                    Effect.tryPromise({
+                      try: () => Promise.resolve(result),
+                      catch: (cause) => cause,
+                    }).pipe(Effect.forkIn(this.scope)),
+                  ),
+                  Effect.catch((cause) =>
+                    this.closing
+                      ? Effect.void
+                      : Effect.sync(() =>
+                          logError(
+                            cause instanceof Error
+                              ? cause.message
+                              : String(cause),
+                          ),
+                        ),
+                  ),
+                ),
+              { discard: true },
+            ),
+          ),
+          Effect.forkIn(this.scope),
+        ),
+      )
+      try {
+        await this.call("llm.attach")
+      } catch (cause) {
+        await Effect.runPromise(Fiber.interrupt(worker))
+        this.attached = false
+        this.listeners.delete(onRequest)
+        throw cause
+      }
+    }
+    return { attached: true as const }
   }
 
   chunk(id: string, items: ReadonlyArray<Backend.Item>) {
-    return this.call("llm.chunk", { id, items: [...items] })
+    return this.call("llm.chunk", { id, items })
   }
 
   finish(id: string, reason?: Backend.FinishReason) {
@@ -166,82 +196,62 @@ export class BackendSimulationClient {
   }
 
   close() {
+    if (this.closing) return
     this.closing = true
-    this.socket.terminate()
+    Effect.runFork(
+      Scope.close(this.scope, Exit.void).pipe(
+        Effect.tap(() => Effect.sync(this.resolveClosed)),
+      ),
+    )
   }
 
-  private onMessage(data: string) {
-    const message = parseResponse(data)
-    if (message === undefined) return
-    if ("method" in message) {
-      if (message.method === "llm.request") {
-        for (const listener of this.llmRequests)
-          listener(message.params as Backend.OpenedExchange)
-      }
-      return
-    }
-    if (typeof message.id !== "number") return
-    const waiter = this.pending.get(message.id)
-    if (waiter === undefined) return
-    this.pending.delete(message.id)
-    clearTimeout(waiter.timer)
-    if (message.error)
-      waiter.reject(
-        new BackendSimulationError(message.error.message, waiter.method),
+  private run<A, E>(method: string, effect: Effect.Effect<A, E>): Promise<A> {
+    return Effect.runPromise(
+      effect.pipe(
+        Effect.timeoutOrElse({
+          duration: this.timeout,
+          orElse: () =>
+            Effect.fail(
+              new BackendSimulationError(
+                `timed out after ${this.timeout}ms`,
+                method,
+              ),
+            ),
+        }),
+      ),
+    ).catch((cause) => {
+      throw new BackendSimulationError(
+        this.closing ? "connection closed" : legacyMessage(cause),
+        method,
       )
-    else waiter.resolve(message.result)
+    })
   }
 
-  private rejectAll(error: BackendSimulationError) {
-    for (const waiter of this.pending.values()) {
-      clearTimeout(waiter.timer)
-      waiter.reject(error)
+  private static async acquire(url: string, timeout: number) {
+    const scope = await Effect.runPromise(Scope.make())
+    try {
+      const connection = await Effect.runPromise(
+        SimulationConnector.backend(url, {
+          connectTimeout: timeout,
+          requestTimeout: timeout,
+          attach: false,
+        }).pipe(Scope.provide(scope)),
+      )
+      return new BackendSimulationClient(scope, connection, url, timeout)
+    } catch (cause) {
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+      throw new BackendSimulationError(
+        cause instanceof Error ? cause.message : `cannot connect to ${url}`,
+      )
     }
-    this.pending.clear()
-  }
-}
-
-function parseResponse(
-  data: string,
-):
-  | JsonRpc.Response
-  | { readonly method: string; readonly params: unknown }
-  | undefined {
-  try {
-    const value = JSON.parse(data) as unknown
-    if (typeof value !== "object" || value === null) return undefined
-    if (!("jsonrpc" in value) || value.jsonrpc !== "2.0") return undefined
-    if ("method" in value && typeof value.method === "string") {
-      return {
-        method: value.method,
-        params: "params" in value ? value.params : undefined,
-      }
-    }
-    if (!("id" in value)) return undefined
-    return value as JsonRpc.Response
-  } catch {
-    return undefined
   }
 }
 
-function open(url: string): Promise<WebSocket> {
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(url)
-    const onOpen = () => {
-      cleanup()
-      resolve(socket)
-    }
-    const onError = () => {
-      cleanup()
-      reject(new BackendSimulationError(`cannot connect to ${url}`))
-    }
-    const cleanup = () => {
-      socket.removeEventListener("open", onOpen)
-      socket.removeEventListener("error", onError)
-    }
-    socket.addEventListener("open", onOpen)
-    socket.addEventListener("error", onError)
-  })
+function legacyMessage(cause: unknown) {
+  const message = cause instanceof Error ? cause.message : String(cause)
+  if (message.includes("connection closed")) return "connection closed"
+  if (message.includes("connection error")) return "connection error"
+  return message
 }
 
 export const connectBackendSimulation = (

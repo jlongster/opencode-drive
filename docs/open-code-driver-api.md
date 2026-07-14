@@ -6,99 +6,61 @@ This document records interface shapes that have been accepted during design. It
 
 Internal resource ownership and desugaring are documented in [OpenCode Driver Architecture](./open-code-driver-architecture.md).
 
-## `make` constructs one scoped driver
+## `use` settles one scoped driver
 
-The primary interface is an ordinary Effect library constructor. It does not require `defineScript`, a default export, dynamic script loading, or Layer construction.
+`OpenCodeDriver.use(options, run)` is the safe top-level interface. It acquires the same driver returned by `make`, runs the program, validates queued LLM work, finishes recordings, closes clients, exports videos, and then releases the server and project scope.
 
 ```ts
 import { NodeRuntime } from "@effect/platform-node"
 import { Effect } from "effect"
 import { Llm, OpenCodeDriver } from "opencode-drive"
 
-const program = Effect.scoped(
-  Effect.gen(function* () {
-    const { ui, llm } = yield* OpenCodeDriver.make({
-      project: {
-        git: true,
-        files: {
-          "src/example.ts": "export const value = 1\n",
-        },
+const program = OpenCodeDriver.use(
+  {
+    project: {
+      git: true,
+      files: {
+        "src/example.ts": "export const value = 1\n",
       },
-      config: {
-        autoupdate: false,
+    },
+    config: {
+      autoupdate: false,
+    },
+    client: {
+      viewport: {
+        cols: 96,
+        rows: 32,
       },
-      client: {
-        viewport: {
-          cols: 96,
-          rows: 32,
-        },
-        recording: false,
-      },
-    })
+      recording: false,
+    },
+  },
+  ({ ui, llm }) =>
+    Effect.gen(function* () {
+      yield* llm.queue(
+        Llm.text("The value is 1."),
+      )
 
-    yield* llm.queue(
-      Llm.text("The value is 1."),
-    )
-
-    yield* ui.submit("Read src/example.ts")
-    yield* ui.waitFor("The value is 1.")
-  }),
+      yield* ui.submit("Read src/example.ts")
+      yield* ui.waitFor("The value is 1.")
+    }),
 )
 
 NodeRuntime.runMain(program)
 ```
 
-`OpenCodeDriver.make(...)` acquires the project, shared OpenCode server, primary frontend client, UI control connection, and shared LLM control. The enclosing Effect scope releases them.
+`OpenCodeDriver.make(...)` remains the lower-level scoped constructor for programs that need to control settlement explicitly. Call `driver.settle()` before leaving its scope. `settle()` is terminal: it rejects new clients and LLM responses, validates queued work, stops clients, and exports recordings.
+
+```ts
+const program = Effect.scoped(
+  Effect.gen(function* () {
+    const driver = yield* OpenCodeDriver.make(options)
+    yield* driver.ui.submit("Hello")
+    yield* driver.settle()
+  }),
+)
+```
 
 Capture font size is not part of this interface. The current renderer uses a fixed 16px font in 10-by-20 cells; the terminal catalog's `OPENCODE_DRIVE_FONT_SIZE=14` environment variable is currently ignored.
-
-## A Drive script is a default-exported Effect
-
-Ordinary library programs run the Effect directly with their chosen runtime. A file consumed by the Drive CLI default-exports the same fully configured program:
-
-```ts
-import { Effect } from "effect"
-import { Llm, OpenCodeDriver } from "opencode-drive"
-
-const program = Effect.scoped(
-  Effect.gen(function* () {
-    const { ui, llm } = yield* OpenCodeDriver.make({
-      project: {
-        files: {
-          "src/example.ts": "export const value = 1\n",
-        },
-      },
-      client: {
-        viewport: {
-          cols: 96,
-          rows: 32,
-        },
-      },
-    })
-
-    yield* llm.queue(
-      Llm.text("The value is 1."),
-    )
-
-    yield* ui.submit("Read src/example.ts")
-    yield* ui.waitFor("The value is 1.")
-  }),
-)
-
-export default program
-```
-
-```shell
-opencode-drive run ./capture.ts
-```
-
-The runner dynamically imports the module, verifies the default export with `Effect.isEffect`, runs it through the Drive runtime, and maps failure to the process exit status. The program contains its own project, client, and launch configuration; there are no named metadata exports.
-
-The same file can instead execute itself as an ordinary library program:
-
-```ts
-NodeRuntime.runMain(program)
-```
 
 ## The driver has one primary client and optional additional clients
 
@@ -128,6 +90,7 @@ const program = Effect.scoped(
 
     yield* oc.ui.submit("Prompt from the primary client")
     yield* secondary.ui.submit("Prompt from the secondary client")
+    yield* oc.settle()
   }),
 )
 ```
@@ -160,7 +123,8 @@ Client identity is generated internally. Callers do not supply names or labels b
 Scripts that only need the primary client should normally destructure the driver:
 
 ```ts
-const { ui, llm } = yield* OpenCodeDriver.make()
+const driver = yield* OpenCodeDriver.make()
+const { ui, llm } = driver
 
 yield* llm.queue(
   Llm.text("Hello from the simulated model."),
@@ -168,6 +132,7 @@ yield* llm.queue(
 
 yield* ui.submit("Hello")
 yield* ui.waitFor("Hello from the simulated model.")
+yield* driver.settle()
 ```
 
 Keep the aggregate value only when driver-wide capabilities such as `clients` are needed:
@@ -178,6 +143,7 @@ const secondary = yield* oc.clients.make()
 
 yield* oc.ui.screenshot("primary")
 yield* secondary.ui.screenshot("secondary")
+yield* oc.settle()
 ```
 
 ## LLM response description is separate from live LLM control
@@ -302,13 +268,15 @@ export default defineScript({
 Effect:
 
 ```ts
-const { ui, llm } = yield* OpenCodeDriver.make()
+const driver = yield* OpenCodeDriver.make()
+const { ui, llm } = driver
 
 yield* llm.queue(
   Llm.text("The value is 1."),
 )
 yield* ui.submit("Read src/example.ts")
 yield* ui.waitFor("The value is 1.")
+yield* driver.settle()
 ```
 
 ### Additional client
@@ -332,6 +300,7 @@ const secondary = yield* oc.clients.make()
 
 yield* oc.ui.submit("Hello from the primary client")
 yield* secondary.ui.screenshot("secondary-view")
+yield* oc.settle()
 ```
 
 ### Client configuration
@@ -353,7 +322,7 @@ export default defineScript({
 Effect:
 
 ```ts
-const { ui } = yield* OpenCodeDriver.make({
+const driver = yield* OpenCodeDriver.make({
   client: {
     viewport: {
       cols: 118,
@@ -361,15 +330,18 @@ const { ui } = yield* OpenCodeDriver.make({
     },
   },
 })
+const { ui } = driver
 
 yield* ui.screenshot("home")
+yield* driver.settle()
 ```
 
 ## Settled interface
 
 - The API is Effect-native.
+- `OpenCodeDriver.use(options, run)` is the safe top-level bracket and performs typed settlement.
 - `OpenCodeDriver.make(options)` is the primary scoped constructor.
-- A CLI-loaded Drive script default-exports one fully configured Effect program.
+- Programs that call `make` directly call terminal `driver.settle()` before leaving the scope.
 - Direct library programs run the same Effect without any export convention.
 - The `client` section configures one primary client.
 - The primary client's UI is exposed as `ui` and `oc.ui`.

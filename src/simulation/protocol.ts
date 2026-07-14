@@ -3,7 +3,7 @@ import * as Schema from "effect/Schema"
 import * as Llm from "../llm/index.js"
 
 const JsonRpcID = Schema.Union([Schema.String, Schema.Number, Schema.Null])
-type Json = Schema.Schema.Type<typeof Schema.Json>
+const decodeJson = Schema.decodeUnknownSync(Schema.Json)
 
 export namespace JsonRpc {
   export const RequestFields = {
@@ -38,7 +38,7 @@ export namespace JsonRpc {
     result: unknown,
   ): Response | undefined {
     if (id === undefined) return undefined
-    return { jsonrpc: "2.0", id, result: result as Json }
+    return { jsonrpc: "2.0", id, result: decodeJson(result) }
   }
 
   export function failure(id: Request["id"], error: unknown): Response {

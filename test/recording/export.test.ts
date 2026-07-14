@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, test } from "vitest"
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -35,10 +35,24 @@ test("exports resized recordings on a stable maximum-size canvas", async () => {
   await writeFile(
     timeline,
     [
-      JSON.stringify({ type: "header", version: 1, cols: 8, rows: 4, encoding: "base64" }),
-      JSON.stringify({ type: "output", at_ms: 0, data: Buffer.from("wide").toString("base64") }),
+      JSON.stringify({
+        type: "header",
+        version: 1,
+        cols: 8,
+        rows: 4,
+        encoding: "base64",
+      }),
+      JSON.stringify({
+        type: "output",
+        at_ms: 0,
+        data: Buffer.from("wide").toString("base64"),
+      }),
       JSON.stringify({ type: "resize", at_ms: 100, cols: 4, rows: 2 }),
-      JSON.stringify({ type: "output", at_ms: 100, data: Buffer.from("small").toString("base64") }),
+      JSON.stringify({
+        type: "output",
+        at_ms: 100,
+        data: Buffer.from("small").toString("base64"),
+      }),
       "",
     ].join("\n"),
   )
@@ -58,7 +72,9 @@ test("centers capture glyphs vertically in their cells", async () => {
       rows: 1,
       cursor: { row: 0, col: 0, visible: false },
       lines: [
-        { spans: [{ text: "Mg", width: 2, fg: 0xffffff, bg: 0x080808, attributes: 0 }] },
+        {
+          spans: [{ text: "Mg", width: 2, fg: 0xffffff, bg: 0x080808, attributes: 0 }],
+        },
       ],
     }),
   )
@@ -68,8 +84,7 @@ test("centers capture glyphs vertically in their cells", async () => {
   const pixels = context.getImageData(0, 0, 20, 20).data
   const inkRows = Array.from({ length: 20 }, (_, row) => row).filter((row) =>
     Array.from({ length: 20 }, (_, column) => (row * 20 + column) * 4).some(
-      (offset) =>
-        pixels[offset] !== 8 || pixels[offset + 1] !== 8 || pixels[offset + 2] !== 8,
+      (offset) => pixels[offset] !== 8 || pixels[offset + 1] !== 8 || pixels[offset + 2] !== 8,
     ),
   )
 
@@ -83,7 +98,17 @@ test("renders block elements edge-to-edge", async () => {
       rows: 1,
       cursor: { row: 0, col: 0, visible: false },
       lines: [
-        { spans: [{ text: "█▀▄", width: 3, fg: 0xffffff, bg: 0x080808, attributes: 0 }] },
+        {
+          spans: [
+            {
+              text: "█▀▄",
+              width: 3,
+              fg: 0xffffff,
+              bg: 0x080808,
+              attributes: 0,
+            },
+          ],
+        },
       ],
     }),
   )
@@ -112,7 +137,17 @@ test("renders distinct fallback glyphs centered in their cells", async () => {
       rows: 1,
       cursor: { row: 0, col: 0, visible: false },
       lines: [
-        { spans: [{ text: symbols.join(""), width: symbols.length, fg: 0xffffff, bg: 0x080808, attributes: 0 }] },
+        {
+          spans: [
+            {
+              text: symbols.join(""),
+              width: symbols.length,
+              fg: 0xffffff,
+              bg: 0x080808,
+              attributes: 0,
+            },
+          ],
+        },
       ],
     }),
   )
@@ -146,7 +181,9 @@ test("accepts valid capture font overrides", async () => {
 })
 
 test("rejects invalid capture font overrides", async () => {
-  const child = renderImport({ OPENCODE_DRIVE_FONT: "/missing/capture-font.woff2" })
+  const child = renderImport({
+    OPENCODE_DRIVE_FONT: "/missing/capture-font.woff2",
+  })
   const stderr = new Response(child.stderr).text()
   expect(await child.exited).toBe(1)
   expect(await stderr).toContain("Failed to register capture font: /missing/capture-font.woff2")
@@ -160,9 +197,23 @@ if (Bun.which("ffmpeg")) {
     await writeFile(
       timeline,
       [
-        JSON.stringify({ type: "header", version: 1, cols: 4, rows: 2, encoding: "base64" }),
-        JSON.stringify({ type: "output", at_ms: 0, data: Buffer.from("A").toString("base64") }),
-        JSON.stringify({ type: "output", at_ms: 250, data: Buffer.from("B").toString("base64") }),
+        JSON.stringify({
+          type: "header",
+          version: 1,
+          cols: 4,
+          rows: 2,
+          encoding: "base64",
+        }),
+        JSON.stringify({
+          type: "output",
+          at_ms: 0,
+          data: Buffer.from("A").toString("base64"),
+        }),
+        JSON.stringify({
+          type: "output",
+          at_ms: 250,
+          data: Buffer.from("B").toString("base64"),
+        }),
         "",
       ].join("\n"),
     )
@@ -182,7 +233,7 @@ if (Bun.which("ffmpeg")) {
 
 function renderImport(env: Record<string, string>) {
   return Bun.spawn([process.execPath, "-e", 'await import("./src/recording/render.ts")'], {
-    cwd: join(import.meta.dir, "../.."),
+    cwd: join(import.meta.dirname, "../.."),
     env: { ...Bun.env, ...env },
     stdout: "ignore",
     stderr: "pipe",

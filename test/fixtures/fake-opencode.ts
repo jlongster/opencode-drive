@@ -154,9 +154,16 @@ const backend = role === "client" ? undefined : Bun.serve({
   },
 })
 
+if (process.argv.includes("write-stdio")) {
+  console.log(`fake opencode ${role} stdout`)
+  console.error(`fake opencode ${role} stderr`)
+}
+
 await new Promise<void>((resolve) => {
   process.once("SIGINT", resolve)
-  process.once("SIGTERM", resolve)
+  if (process.argv.includes("ignore-sigterm"))
+    process.on("SIGTERM", () => undefined)
+  else process.once("SIGTERM", resolve)
   const lifetime = role === "service" ? Number.NaN : Number(process.argv[2])
   if (Number.isFinite(lifetime)) setTimeout(resolve, lifetime)
 })

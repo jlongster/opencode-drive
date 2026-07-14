@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "vitest"
 import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -25,9 +25,7 @@ describe("script project", () => {
     })
     await commitScriptProject(root)
 
-    expect(await Bun.file(join(root, "src/example.ts")).text()).toBe(
-      "export const value = 1\n",
-    )
+    expect(await Bun.file(join(root, "src/example.ts")).text()).toBe("export const value = 1\n")
     expect(await git(root, ["status", "--porcelain"])).toBe("")
     expect((await git(root, ["log", "-1", "--format=%s"])).trim()).toBe("Initial commit")
   })
@@ -48,15 +46,17 @@ describe("script project", () => {
       }),
     ).rejects.toThrow("stay inside")
     expect(await Bun.file(join(root, "existing.txt")).text()).toBe("before\n")
-    await expect(
-      initializeScriptProject(root, { files: { ".GIT/config": "no" } }),
-    ).rejects.toThrow("must not modify Git metadata")
+    await expect(initializeScriptProject(root, { files: { ".GIT/config": "no" } })).rejects.toThrow(
+      "must not modify Git metadata",
+    )
   })
 
   test("rejects fixture paths that resolve to the same file", async () => {
     const root = await temporary()
     await expect(
-      initializeScriptProject(root, { files: { "same.txt": "one", "./same.txt": "two" } }),
+      initializeScriptProject(root, {
+        files: { "same.txt": "one", "./same.txt": "two" },
+      }),
     ).rejects.toThrow("must resolve to unique files")
     expect(await Bun.file(join(root, "same.txt")).exists()).toBe(false)
   })
@@ -65,16 +65,20 @@ describe("script project", () => {
     const root = await temporary()
     await expect(
       initializeScriptProject(root, {
-        files: { "good.txt": "must not be written", "parent": "file", "parent/child": "child" },
+        files: {
+          "good.txt": "must not be written",
+          parent: "file",
+          "parent/child": "child",
+        },
       }),
     ).rejects.toThrow("file and directory conflicts")
     expect(await Bun.file(join(root, "good.txt")).exists()).toBe(false)
-    await expect(initializeScriptProject(root, { files: { "": "no" } })).rejects.toThrow(
-      "must name a file",
-    )
+    await expect(initializeScriptProject(root, { files: { "": "no" } })).rejects.toThrow("must name a file")
     await mkdir(join(root, "directory"))
     await expect(
-      initializeScriptProject(root, { files: { directory: "no", "still-good.txt": "no" } }),
+      initializeScriptProject(root, {
+        files: { directory: "no", "still-good.txt": "no" },
+      }),
     ).rejects.toThrow("must not be a directory")
     expect(await Bun.file(join(root, "still-good.txt")).exists()).toBe(false)
   })
@@ -89,13 +93,17 @@ describe("script project", () => {
         files: { "must-not-be-written.txt": "no\n" },
       }),
     ).rejects.toThrow("cannot replace existing Git metadata")
-    expect(await Bun.file(join(root, "must-not-be-written.txt")).exists()).toBe(
-      false,
-    )
+    expect(await Bun.file(join(root, "must-not-be-written.txt")).exists()).toBe(false)
   })
 
   test("removes inherited Git environment variables", () => {
-    expect(stripGitEnvironment({ PATH: "/bin", GIT_DIR: "/outside", EMPTY: undefined })).toEqual({
+    expect(
+      stripGitEnvironment({
+        PATH: "/bin",
+        GIT_DIR: "/outside",
+        EMPTY: undefined,
+      }),
+    ).toEqual({
       PATH: "/bin",
     })
   })

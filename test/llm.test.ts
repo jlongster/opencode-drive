@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { Schema } from "effect"
 import { Llm } from "../src/index.js"
 
@@ -71,14 +71,15 @@ describe("Llm", () => {
     expect(() => Llm.text("hello", { delay: -1 })).toThrow()
     expect(() => Llm.text("hello", { chunkSize: 0 })).toThrow()
     expect(() => Llm.text("hello", { chunkSize: 1.5 })).toThrow()
+    expect(() => Llm.toolCall({ index: -1, id: "call_3", name: "read", input: {} })).toThrow()
+    expect(() => Llm.toolCall({ index: 1.5, id: "call_3", name: "read", input: {} })).toThrow()
     expect(() =>
-      Llm.toolCall({ index: -1, id: "call_3", name: "read", input: {} }),
-    ).toThrow()
-    expect(() =>
-      Llm.toolCall({ index: 1.5, id: "call_3", name: "read", input: {} }),
-    ).toThrow()
-    expect(() =>
-      Llm.toolCall({ index: Number.NaN, id: "call_3", name: "read", input: {} }),
+      Llm.toolCall({
+        index: Number.NaN,
+        id: "call_3",
+        name: "read",
+        input: {},
+      }),
     ).toThrow()
     expect(() =>
       Llm.toolCall({
@@ -88,9 +89,7 @@ describe("Llm", () => {
         input: {},
       }),
     ).toThrow()
-    expect(() =>
-      decode({ type: "finish", reason: "unknown" }),
-    ).toThrow()
+    expect(() => decode({ type: "finish", reason: "unknown" })).toThrow()
     expect(() =>
       decode({
         type: "toolCall",

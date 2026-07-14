@@ -12,6 +12,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client/index.ts",
+    "./driver": "./src/driver/index.ts",
     "./experimental": "./src/experimental/index.ts",
     "./llm": "./src/llm/index.ts",
     "./recording": "./src/recording/index.ts",
@@ -22,6 +23,7 @@
     "bin/opencode-drive",
     "src/cli",
     "src/client",
+    "src/driver",
     "src/experimental",
     "src/instance",
     "src/llm",
@@ -35,7 +37,9 @@
   "scripts": {
     "drive": "bun run src/cli/index.ts",
     "lint": "oxlint src",
-    "test": "bun test test",
+    "test": "bun run test:effect && bun run test:cli",
+    "test:effect": "bun run --bun vitest run",
+    "test:cli": "bun test test/cli/integration.test.ts",
     "typecheck": "tsgo --noEmit",
     "check": "bun run lint && bun run typecheck"
   },
@@ -49,11 +53,13 @@
     "effect": "4.0.0-beta.98"
   },
   "devDependencies": {
+    "@effect/vitest": "4.0.0-beta.98",
     "@tsconfig/bun": "1.0.9",
     "@types/bun": "1.3.13",
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "oxlint": "1.60.0",
     "oxlint-tsgolint": "0.21.0",
-    "typescript": "5.8.2"
+    "typescript": "5.8.2",
+    "vitest": "4.1.10"
   }
 }

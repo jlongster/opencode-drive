@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, test } from "vitest"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
@@ -8,7 +8,7 @@ const state = {
   elements: [],
 }
 
-test.serial("CLI drives an externally owned OpenCode endpoint on the default port", async () => {
+test.sequential("CLI drives an externally owned OpenCode endpoint on the default port", async () => {
   const root = await mkdtemp(join(tmpdir(), "opencode-drive-direct-test-"))
   const requests: unknown[] = []
   const server = Bun.serve({
@@ -16,7 +16,9 @@ test.serial("CLI drives an externally owned OpenCode endpoint on the default por
     port: 40900,
     fetch(request, server) {
       if (server.upgrade(request)) return
-      return new Response("external OpenCode simulation endpoint", { status: 426 })
+      return new Response("external OpenCode simulation endpoint", {
+        status: 426,
+      })
     },
     websocket: {
       message(socket, message) {
@@ -25,9 +27,7 @@ test.serial("CLI drives an externally owned OpenCode endpoint on the default por
           readonly method: string
         }
         requests.push(request)
-        socket.send(
-          JSON.stringify({ jsonrpc: "2.0", id: request.id, result: state }),
-        )
+        socket.send(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: state }))
       },
     },
   })
@@ -52,25 +52,17 @@ test.serial("CLI drives an externally owned OpenCode endpoint on the default por
 })
 
 async function sendState(root: string) {
-  const child = Bun.spawn(
-    [
-      process.execPath,
-      resolve("src/cli/index.ts"),
-      "send",
-      "--command.ui.state",
-    ],
-    {
-      cwd: resolve("."),
-      env: {
-        ...process.env,
-        DRIVE_REGISTRY_DIR: join(root, "registry"),
-        TMPDIR: root,
-      },
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
+  const child = Bun.spawn([process.execPath, resolve("src/cli/index.ts"), "send", "--command.ui.state"], {
+    cwd: resolve("."),
+    env: {
+      ...process.env,
+      DRIVE_REGISTRY_DIR: join(root, "registry"),
+      TMPDIR: root,
     },
-  )
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  })
   const [status, stdout, stderr] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),

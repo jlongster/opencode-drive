@@ -4,6 +4,7 @@ import type { SampledFrame, TimelineHeader } from "./types.js"
 
 export interface ReplayOptions {
   fps?: number
+  signal?: AbortSignal
 }
 
 interface InternalReplayOptions extends ReplayOptions {
@@ -20,18 +21,22 @@ export async function replayRecording(path: string, options: ReplayOptions = {})
 }
 
 export async function replay(path: string, options: InternalReplayOptions = {}): Promise<SampledFrame[]> {
+  options.signal?.throwIfAborted()
   const interval = sampleInterval(options.fps ?? 20)
   const records = decodeTimeline(path)[Symbol.asyncIterator]()
   const first = await records.next()
+  options.signal?.throwIfAborted()
   if (first.done || first.value.type !== "header") throw new Error("Recording timeline is missing its header")
   const header: TimelineHeader = first.value
   const terminal = await (options.terminalFactory ?? createTerminalParser)(header.cols, header.rows)
+  options.signal?.throwIfAborted()
   const frames: SampledFrame[] = []
   let nextSample = 0
   let finalAt = 0
 
   for (;;) {
     const next = await records.next()
+    options.signal?.throwIfAborted()
     if (next.done) break
     const event = next.value
     if (event.type === "header") throw new Error("Recording timeline contains a second header")

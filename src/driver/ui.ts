@@ -62,9 +62,9 @@ export interface Options {
 
 const RequestTimeout = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
 
-type WaitError = UiTimeoutError | UiWaitOptionsError
+export type WaitError = UiTimeoutError | UiWaitOptionsError
 type RpcError = SimulationRequestError | RpcClientError.RpcClientError
-type OperationError = RpcError | UiTimeoutError
+export type OperationError = RpcError | UiTimeoutError
 
 export interface Ui {
   readonly state: () => Effect.Effect<Frontend.State, OperationError>

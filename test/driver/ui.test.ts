@@ -1,12 +1,8 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import * as OpenCodeUi from "../../src/driver/ui.js"
 import * as SimulationConnector from "../../src/simulation/connector.js"
-import {
-  sendError,
-  sendResult,
-  startTransportPeer,
-} from "../simulation/transport-peer.js"
+import { sendError, sendResult, startTransportPeer } from "../simulation/transport-peer.js"
 
 const editor = {
   id: "prompt",
@@ -27,7 +23,7 @@ const state = {
 }
 
 describe("OpenCodeUi", () => {
-  test("wraps generated UI RPCs with user-level operations", async () => {
+  it.live("wraps generated UI RPCs with user-level operations", () => {
     let matchCalls = 0
     const peer = startTransportPeer(({ request, socket }) => {
       if (request.method === "ui.matches") {
@@ -42,24 +38,17 @@ describe("OpenCodeUi", () => {
       sendResult(socket, request, state)
     })
 
-    try {
-      await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const connection = yield* SimulationConnector.ui(peer.url)
-            const ui = OpenCodeUi.make(connection)
+    return Effect.gen(function* () {
+      yield* Effect.addFinalizer(() => Effect.promise(() => peer.stop()))
+      const connection = yield* SimulationConnector.ui(peer.url)
+      const ui = OpenCodeUi.make(connection)
 
-            expect(yield* ui.submit("hello")).toEqual(state)
-            expect(yield* ui.press("escape", { ctrl: true })).toEqual(state)
-            expect(yield* ui.click(3)).toEqual(state)
-            expect(yield* ui.screenshot("home")).toBe("/tmp/home.png")
-            expect(
-              yield* ui.waitFor("ready", { timeout: 1_000, interval: 1 }),
-            ).toEqual(state)
-            expect(yield* ui.getElement({ editor: true })).toEqual(editor)
-          }),
-        ),
-      )
+      expect(yield* ui.submit("hello")).toEqual(state)
+      expect(yield* ui.press("escape", { ctrl: true })).toEqual(state)
+      expect(yield* ui.click(3)).toEqual(state)
+      expect(yield* ui.screenshot("home")).toBe("/tmp/home.png")
+      expect(yield* ui.waitFor("ready", { timeout: 1_000, interval: 1 })).toEqual(state)
+      expect(yield* ui.getElement({ editor: true })).toEqual(editor)
 
       expect(peer.received.map(({ request }) => request)).toEqual([
         {
@@ -103,12 +92,10 @@ describe("OpenCodeUi", () => {
         { jsonrpc: "2.0", id: 9, method: "ui.state" },
         { jsonrpc: "2.0", id: 10, method: "ui.state" },
       ])
-    } finally {
-      await peer.stop()
-    }
+    })
   })
 
-  test("reports ambiguous elements as typed UI failures", async () => {
+  it.live("reports ambiguous elements as typed UI failures", () => {
     const peer = startTransportPeer(({ request, socket }) =>
       sendResult(socket, request, {
         ...state,
@@ -116,52 +103,36 @@ describe("OpenCodeUi", () => {
       }),
     )
 
-    try {
-      const error = await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const connection = yield* SimulationConnector.ui(peer.url)
-            return yield* OpenCodeUi.make(connection)
-              .getElement({ editor: true })
-              .pipe(Effect.flip)
-          }),
-        ),
-      )
+    return Effect.gen(function* () {
+      yield* Effect.addFinalizer(() => Effect.promise(() => peer.stop()))
+      const connection = yield* SimulationConnector.ui(peer.url)
+      const error = yield* OpenCodeUi.make(connection).getElement({ editor: true }).pipe(Effect.flip)
       expect(error).toBeInstanceOf(OpenCodeUi.UiElementAmbiguousError)
       expect(error).toMatchObject({
         count: 2,
         message: "ui.getElement matched 2 elements",
       })
-    } finally {
-      await peer.stop()
-    }
+    })
   })
 
-  test("interrupts timed-out polling and remains usable", async () => {
+  it.live("interrupts timed-out polling and remains usable", () => {
     const peer = startTransportPeer(({ request, socket }) => {
       if (request.method === "ui.matches") return
       sendResult(socket, request, state)
     })
 
-    try {
-      await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const connection = yield* SimulationConnector.ui(peer.url)
-            const ui = OpenCodeUi.make(connection)
-            const error = yield* ui
-              .waitFor("never", { timeout: 20, interval: 100 })
-              .pipe(Effect.flip)
+    return Effect.gen(function* () {
+      yield* Effect.addFinalizer(() => Effect.promise(() => peer.stop()))
+      const connection = yield* SimulationConnector.ui(peer.url)
+      const ui = OpenCodeUi.make(connection)
+      const error = yield* ui.waitFor("never", { timeout: 20, interval: 100 }).pipe(Effect.flip)
 
-            expect(error).toBeInstanceOf(OpenCodeUi.UiTimeoutError)
-            expect(error).toMatchObject({
-              operation: "waitFor",
-              milliseconds: 20,
-            })
-            expect(yield* ui.state()).toEqual(state)
-          }),
-        ),
-      )
+      expect(error).toBeInstanceOf(OpenCodeUi.UiTimeoutError)
+      expect(error).toMatchObject({
+        operation: "waitFor",
+        milliseconds: 20,
+      })
+      expect(yield* ui.state()).toEqual(state)
       expect(peer.received.map(({ request }) => request)).toEqual([
         {
           jsonrpc: "2.0",
@@ -171,35 +142,24 @@ describe("OpenCodeUi", () => {
         },
         { jsonrpc: "2.0", id: 2, method: "ui.state" },
       ])
-    } finally {
-      await peer.stop()
-    }
+    })
   })
 
-  test("does not retry RPC failures while polling", async () => {
-    const peer = startTransportPeer(({ request, socket }) =>
-      sendError(socket, request, "match failed"),
-    )
+  it.live("does not retry RPC failures while polling", () => {
+    const peer = startTransportPeer(({ request, socket }) => sendError(socket, request, "match failed"))
 
-    try {
-      const error = await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const connection = yield* SimulationConnector.ui(peer.url)
-            return yield* OpenCodeUi.make(connection)
-              .waitFor("ready", { timeout: 1_000, interval: 1 })
-              .pipe(Effect.flip)
-          }),
-        ),
-      )
+    return Effect.gen(function* () {
+      yield* Effect.addFinalizer(() => Effect.promise(() => peer.stop()))
+      const connection = yield* SimulationConnector.ui(peer.url)
+      const error = yield* OpenCodeUi.make(connection)
+        .waitFor("ready", { timeout: 1_000, interval: 1 })
+        .pipe(Effect.flip)
       expect(error).toMatchObject({
         _tag: "SimulationRequestError",
         method: "ui.matches",
         message: "match failed",
       })
       expect(peer.received).toHaveLength(1)
-    } finally {
-      await peer.stop()
-    }
+    })
   })
 })

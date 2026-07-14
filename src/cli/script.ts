@@ -7,6 +7,7 @@ import type {
 } from "../client/index.js"
 import { createScriptFileSystem } from "../script/filesystem.js"
 import { hasGitMetadata } from "../script/project.js"
+import { finalizeRecording } from "../recording/finalize.js"
 import type {
   LlmOutput,
   LlmRequest,
@@ -28,6 +29,7 @@ import type {
   UiWaitOptions,
   UiViewport,
 } from "../script/types.js"
+import { chunkText, isTitleRequest } from "../llm/internal.js"
 
 export async function loadScript(file: string): Promise<ScriptDefinition> {
   const module: { readonly default?: unknown } = await import(
@@ -118,17 +120,7 @@ export async function runScript(
                 abortTimeout(error)
                 throw error
               })
-              if (timeline !== launched.recording.timeline)
-                throw new Error(
-                  `OpenCode returned an unexpected recording path: ${timeline}`,
-                )
-              if (!(await Bun.file(timeline).exists()))
-                throw new Error(
-                  `OpenCode recording timeline was not created: ${timeline}`,
-                )
-              const { exportRecording } = await import("../recording/export.js")
-              await exportRecording(timeline, launched.recording.video)
-              output = launched.recording.video
+              output = await finalizeRecording(timeline, launched.recording)
               onRecording?.(output)
             }
             return output
@@ -408,7 +400,7 @@ class ScriptLlmClient implements ScriptLlm {
     if (this.backend) throw new Error("LLM backend is already attached")
     this.backend = backend
     await backend.attach((request) => {
-      if (isTitleRequest(request)) {
+      if (isTitleRequest(request.body)) {
         const index = this.titleRequestIndex++
         const pending = [...this.tasks]
         this.start(request, async function* (this: ScriptLlmClient) {
@@ -640,14 +632,12 @@ class ScriptLlmClient implements ScriptLlm {
     if (!Number.isInteger(chunkSize) || chunkSize < 1)
       throw new Error(`llm.${helper} chunkSize must be a positive integer`)
 
-    const characters = Array.from(text)
-    for (let index = 0; index < characters.length; ) {
-      const size = Math.max(1, chunkSize + Math.floor(Math.random() * 11) - 5)
-      const end = Math.min(characters.length, index + size)
-      const chunk = characters.slice(index, end).join("")
-      index = end
+    const chunks = [...chunkText(text, chunkSize)]
+    for (let index = 0; index < chunks.length; index++) {
+      const chunk = chunks[index]
+      if (chunk === undefined) continue
       await backend.chunk(id, [{ type, text: chunk }])
-      if (index < characters.length && delay > 0) await Bun.sleep(delay)
+      if (index < chunks.length - 1 && delay > 0) await Bun.sleep(delay)
     }
   }
 }
@@ -676,44 +666,6 @@ function matchesElement(element: UiElement, query: UiElementQuery) {
     (query.clickable === undefined || element.clickable === query.clickable) &&
     (query.editor === undefined || element.editor === query.editor)
   )
-}
-
-function isTitleRequest(request: LlmRequest) {
-  const body = request.body
-  if (!isRecord(body)) return false
-  const messages = body.messages
-  if (!Array.isArray(messages)) return false
-  const first = messages.find(isMessageObject)
-  const firstContent = messageContent(first)
-  if (
-    first?.role === "user" &&
-    firstContent?.startsWith("Generate a title for this conversation:")
-  )
-    return true
-  const system = messages.find(
-    (message) => isMessageObject(message) && message.role === "system",
-  )
-  return (
-    messageContent(system)?.startsWith("You are a title generator.") ?? false
-  )
-}
-
-function isMessageObject(value: unknown) {
-  return isRecord(value) && typeof value.role === "string"
-}
-
-function messageContent(message: unknown): string | undefined {
-  if (!isRecord(message)) return undefined
-  const content = message.content
-  if (typeof content === "string") return content
-  if (!Array.isArray(content)) return undefined
-  return content
-    .map((part) => {
-      if (typeof part === "string") return part
-      if (isRecord(part) && typeof part.text === "string") return part.text
-      return ""
-    })
-    .join("")
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

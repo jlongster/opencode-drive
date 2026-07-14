@@ -1,4 +1,4 @@
-import { lstat, mkdir, readlink, rm, rmdir, symlink } from "node:fs/promises"
+import { lstat, mkdir, readlink, rm, rmdir, stat, symlink } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -21,17 +21,19 @@ export async function prepareScriptTooling(artifacts: string, script: string) {
   if (!(await Bun.file(manifest).exists()) || (await Bun.file(manifest).text()) !== contents) {
     await Bun.write(manifest, contents)
   }
-  const install = Bun.spawn([process.execPath, "install"], {
-    cwd: artifacts,
-    stdin: "ignore",
-    stdout: "ignore",
-    stderr: "pipe",
-  })
-  const status = await install.exited
-  if (status !== 0)
-    throw new Error(
-      `bun install failed in ${artifacts}: ${(await new Response(install.stderr).text()).trim()}`,
-    )
+  if (!(await linkLocalTooling(artifacts))) {
+    const install = Bun.spawn([process.execPath, "install"], {
+      cwd: artifacts,
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "pipe",
+    })
+    const status = await install.exited
+    if (status !== 0)
+      throw new Error(
+        `bun install failed in ${artifacts}: ${(await new Response(install.stderr).text()).trim()}`,
+      )
+  }
 
   await Bun.write(
     join(artifacts, "tsconfig.json"),
@@ -60,6 +62,39 @@ export async function prepareScriptTooling(artifacts: string, script: string) {
     tsgo: join(artifacts, "node_modules", ".bin", "tsgo"),
     tsconfig: join(artifacts, "tsconfig.json"),
     links: await linkScriptDependencies(file, artifacts),
+  }
+}
+
+async function linkLocalTooling(artifacts: string) {
+  const local = {
+    drive: packageRoot,
+    tsgo: join(packageRoot, "node_modules", ".bin", "tsgo"),
+    bunTypes: join(packageRoot, "node_modules", "@types", "bun"),
+  }
+  if (
+    !(await stat(local.tsgo).catch(() => undefined)) ||
+    !(await stat(local.bunTypes).catch(() => undefined))
+  )
+    return false
+  const modules = join(artifacts, "node_modules")
+  await Promise.all([
+    mkdir(join(modules, ".bin"), { recursive: true }),
+    mkdir(join(modules, "@types"), { recursive: true }),
+  ])
+  const created: string[] = []
+  try {
+    for (const [target, path] of [
+      [local.drive, join(modules, "opencode-drive")],
+      [local.tsgo, join(modules, ".bin", "tsgo")],
+      [local.bunTypes, join(modules, "@types", "bun")],
+    ] as const) {
+      await symlink(target, path)
+      created.push(path)
+    }
+    return true
+  } catch {
+    await Promise.all(created.map((path) => rm(path, { force: true })))
+    return false
   }
 }
 

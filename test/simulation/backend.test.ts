@@ -1,9 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import {
-  Backend,
-  BackendSimulationClient,
-  connectBackendSimulation,
-} from "../../src/client/index.js"
+import { describe, expect, test } from "vitest"
+import { Backend, BackendSimulationClient, connectBackendSimulation } from "../../src/client/index.js"
 import { sendResult, startTransportPeer } from "./transport-peer.js"
 
 const exchanges = {
@@ -24,22 +20,14 @@ const exchanges = {
   },
 } as const
 
-function sendNotification(
-  socket: Bun.ServerWebSocket<undefined>,
-  method: string,
-  params: unknown,
-) {
+function sendNotification(socket: Bun.ServerWebSocket<undefined>, method: string, params: unknown) {
   socket.send(JSON.stringify({ jsonrpc: "2.0", method, params }))
 }
 
 describe("OpenCode backend simulation transport", () => {
   test("preserves exact frames, sequential IDs, results, and finish defaults", async () => {
     const peer = startTransportPeer(({ request, socket }) => {
-      sendResult(
-        socket,
-        request,
-        request.method === "llm.attach" ? { attached: true } : { ok: true },
-      )
+      sendResult(socket, request, request.method === "llm.attach" ? { attached: true } : { ok: true })
     })
     let client: BackendSimulationClient | undefined
 
@@ -142,9 +130,7 @@ describe("OpenCode backend simulation transport", () => {
         },
       ]
 
-      expect(peer.received.map(({ raw }) => raw)).toEqual(
-        frames.map((frame) => JSON.stringify(frame)),
-      )
+      expect(peer.received.map(({ raw }) => raw)).toEqual(frames.map((frame) => JSON.stringify(frame)))
       expect(peer.received.map(({ request }) => request)).toEqual(frames)
 
       expect(Backend.decodeRequest(peer.received[2]!.request)).toEqual({
@@ -207,11 +193,7 @@ describe("OpenCode backend simulation transport", () => {
       const received: Backend.OpenedExchange[] = []
       await client.attach((request) => received.push(request))
 
-      expect(
-        await client.chunk("exchange-1", [
-          { type: "textDelta", text: "response" },
-        ]),
-      ).toEqual({ ok: true })
+      expect(await client.chunk("exchange-1", [{ type: "textDelta", text: "response" }])).toEqual({ ok: true })
       expect(received).toEqual([exchanges.first, exchanges.second])
     } finally {
       client?.close()

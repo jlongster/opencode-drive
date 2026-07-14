@@ -7,6 +7,7 @@ import { createResponseSettings } from "./response-generator.js"
 import { loadScript, runScript } from "./script.js"
 import type { ScriptDefinition } from "../script/types.js"
 import { prepareScriptTooling } from "../script/tooling.js"
+import { finalizeRecording } from "../recording/finalize.js"
 import { listenControl } from "../instance/control.js"
 import { configureLogFile, logError, logReadyPaths, logSuccess } from "../log.js"
 import {
@@ -329,13 +330,7 @@ async function finishRecording(
       ui.close()
     }
   }
-  if (timeline !== expected.timeline)
-    throw new Error(`OpenCode returned an unexpected recording path: ${timeline}`)
-  if (!(await Bun.file(timeline).exists()))
-    throw new Error(`OpenCode recording timeline was not created: ${timeline}`)
-  const { exportRecording } = await import("../recording/export.js")
-  await exportRecording(timeline, expected.video, { onProgress })
-  return expected.video
+  return finalizeRecording(timeline, expected, { onProgress })
 }
 
 async function startDetached(options: StartOptions, artifacts: string) {

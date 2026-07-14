@@ -27,6 +27,8 @@ export interface Notification {
 }
 
 export interface Options {
+  readonly connectTimeout?: number
+  readonly onClose?: () => Effect.Effect<void>
   readonly onNotification?: (
     notification: Notification,
   ) => Effect.Effect<void>
@@ -41,9 +43,21 @@ export const make = Effect.fn("OpenCodeRpcProtocol.make")(function* (
   endpoint: string,
   options?: Options,
 ) {
+  const connectTimeout = options?.connectTimeout ?? 30_000
   let closing = false
   const socket = yield* Effect.acquireRelease(
-    open(endpoint),
+    open(endpoint).pipe(
+      Effect.timeoutOrElse({
+        duration: connectTimeout,
+        orElse: () =>
+          Effect.fail(
+            protocolError(
+              `cannot connect to ${endpoint}: timed out after ${connectTimeout}ms`,
+              new Error("WebSocket connection timed out"),
+            ),
+          ),
+      }),
+    ),
     (socket) =>
       Effect.sync(() => {
         closing = true
@@ -152,9 +166,15 @@ export const make = Effect.fn("OpenCodeRpcProtocol.make")(function* (
           case "Message":
             return handleMessage(event.data)
           case "Close":
-            return failAll("connection closed", new Error("connection closed"))
+            return Effect.andThen(
+              options?.onClose?.() ?? Effect.void,
+              failAll("connection closed", new Error("connection closed")),
+            )
           case "Error":
-            return failAll("connection error", event.cause)
+            return Effect.andThen(
+              options?.onClose?.() ?? Effect.void,
+              failAll("connection error", event.cause),
+            )
         }
         return Effect.void
       }
