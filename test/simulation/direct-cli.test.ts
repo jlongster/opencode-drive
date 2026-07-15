@@ -26,7 +26,17 @@ test.sequential("CLI drives an externally owned OpenCode endpoint on the default
           readonly id: number
           readonly method: string
         }
-        if (request.method !== "simulation.handshake") requests.push(request)
+        if (request.method === "simulation.handshake") {
+          socket.send(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: request.id,
+              error: { code: -32601, message: "method not found" },
+            }),
+          )
+          return
+        }
+        requests.push(request)
         socket.send(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: state }))
       },
     },

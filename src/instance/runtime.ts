@@ -115,7 +115,6 @@ export const make = Effect.fn("OpenCodeInstance.make")(function* (
     backend: `ws://127.0.0.1:${yield* freePort}`,
   }
   if (
-    options.scripted ||
     options.project !== undefined ||
     options.config !== undefined ||
     options.tui !== undefined ||

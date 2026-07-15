@@ -96,6 +96,7 @@ const makeWithServices = Effect.fn("OpenCodeDriver.makeWithServices")(
       visible: options.opencode?.visible,
       client: options.client,
       artifactsRetained: options.keepArtifacts ?? false,
+      compatibility: options.opencode?.compatibility,
     })
     if (prepared.driver === undefined)
       return yield* Effect.die(

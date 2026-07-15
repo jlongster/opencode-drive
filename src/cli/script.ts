@@ -259,12 +259,8 @@ function aborted(signal: AbortSignal) {
 
 function isZeroStatusClientExit(cause: unknown) {
   return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "operation" in cause &&
+    cause instanceof OpenCodeDriver.OpenCodeDriverError &&
     cause.operation === "client.exit" &&
-    "message" in cause &&
-    typeof cause.message === "string" &&
     cause.message.endsWith("status 0")
   )
 }

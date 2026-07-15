@@ -70,8 +70,8 @@ export default OpenCodeDriver.use(
 
 Use `OpenCodeDriver.useReport` when the program also needs structured evidence.
 It returns the program value plus a schema-validated report containing branded
-artifact/media paths, concrete logs, recordings, retention, timing, and the
-negotiated or legacy compatibility of every simulation endpoint:
+artifact and recording paths, retention, and the negotiated or legacy
+compatibility of every simulation endpoint:
 
 ```ts
 const result = yield* OpenCodeDriver.useReport(options, program)

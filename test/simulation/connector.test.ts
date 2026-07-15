@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, Option, Schema, Stream } from "effect"
 import { SimulationConnector } from "../../src/simulation/connector.js"
-import { sendResult, startTransportPeer } from "./transport-peer.js"
+import { sendError, sendResult, startTransportPeer } from "./transport-peer.js"
 
 const state = {
   focused: { renderable: 1, editor: true },
@@ -32,7 +32,10 @@ describe("SimulationConnector", () => {
   it.live("reports legacy fallback and rejects it when negotiation is required", () =>
     Effect.gen(function* () {
       const peer = startTransportPeer(
-        ({ request, socket }) => sendResult(socket, request, state),
+        ({ request, socket }) =>
+          request.method === "simulation.handshake"
+            ? sendError(socket, request, "method not found", -32601)
+            : sendResult(socket, request, state),
         { handshake: false },
       )
       yield* Effect.addFinalizer(() => Effect.promise(() => peer.stop()))

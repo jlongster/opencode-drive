@@ -3,7 +3,10 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import * as Effect from "effect/Effect"
-import { prepareScriptTooling } from "../script/tooling.js"
+import {
+  prepareScriptTooling,
+  typecheckPreparedTooling,
+} from "../script/tooling.js"
 
 export const runProgram = Effect.fn("Cli.runProgram")((file: string) =>
   Effect.acquireUseRelease(
@@ -44,15 +47,7 @@ async function prepareProgram(file: string) {
     )
     const tooling = await prepareScriptTooling(artifacts, contract, file)
     links = tooling.links
-    const child = Bun.spawn([tooling.tsgo, "-p", tooling.tsconfig], {
-      cwd: artifacts,
-      stdin: "ignore",
-      stdout: "inherit",
-      stderr: "inherit",
-    })
-    const status = await child.exited
-    if (status !== 0)
-      throw new Error(`program type check failed with status ${status}`)
+    await typecheckPreparedTooling(tooling, artifacts, "program")
     return {
       file,
       remove: async () => {

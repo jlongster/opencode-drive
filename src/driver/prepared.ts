@@ -1,7 +1,6 @@
 import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
-import { NodeServices } from "@effect/platform-node"
 import * as OpenCodeInstance from "../instance/runtime.js"
 import * as SimulationConnector from "../simulation/connector.js"
 import * as OpenCodeClient from "./client.js"
@@ -18,9 +17,7 @@ import type {
 import * as OpenCodeServer from "./server.js"
 import * as SharedEffect from "./shared.js"
 import type * as OpenCodeUi from "./ui.js"
-import * as ReportCollector from "./report-collector.js"
-import { Compatibility } from "./report.js"
-import type { EndpointCompatibility } from "../simulation/connector.js"
+import { decodeRunReport } from "./report.js"
 
 export interface Options {
   readonly visible?: boolean
@@ -28,6 +25,7 @@ export interface Options {
   readonly launch?: "automatic" | "manual"
   readonly clientName?: string
   readonly artifactsRetained?: boolean
+  readonly compatibility?: SimulationConnector.CompatibilityPolicy
 }
 
 export interface Prepared {
@@ -48,10 +46,12 @@ export const makeWithServices = Effect.fn("OpenCodeDriver.makePreparedWithServic
     instance: OpenCodeInstance.Instance,
     options: Options = {},
   ) {
-    const startedAt = Date.now()
     const server = yield* OpenCodeServer.make({
       instance,
-      target: { visible: options.visible },
+      target: {
+        visible: options.visible,
+        compatibility: options.compatibility,
+      },
     })
     if ((options.launch ?? "automatic") === "automatic") yield* server.launch()
     const primary = (options.launch ?? "automatic") === "automatic"
@@ -90,50 +90,22 @@ export const makeWithServices = Effect.fn("OpenCodeDriver.makePreparedWithServic
           ...(yield* server.clients.compatibility),
         ]
         const recordings = Exit.isSuccess(clientExit) ? clientExit.value : []
-        const endedAt = Date.now()
-        const report = yield* ReportCollector.collect({
-            artifactRoot: instance.artifacts,
-            artifactsRetained: options.artifactsRetained ?? true,
-            timing: {
-              startedAt: new Date(startedAt).toISOString(),
-              endedAt: new Date(endedAt).toISOString(),
-              durationMs: endedAt - startedAt,
-            },
-            outcome: { _tag: "Succeeded" },
-            compatibility: compatibility.map(reportCompatibility),
-            screenshotPaths: [],
-            recordingPaths: recordings,
-          }).pipe(
-            Effect.provide(NodeServices.layer),
-            Effect.mapError((cause) => error("report.collect", cause)),
-          )
+        const report = yield* decodeRunReport({
+          artifacts: instance.artifacts,
+          retained: options.artifactsRetained ?? true,
+          recordings,
+          compatibility,
+        }).pipe(
+          Effect.mapError((cause) => error("report.make", cause)),
+        )
         return { recordings, report } satisfies Settlement
-})
-
-function reportCompatibility(
-  compatibility: EndpointCompatibility,
-): Compatibility {
-  return compatibility._tag === "Negotiated"
-    ? Compatibility.cases.Negotiated.make({
-        role: compatibility.role,
-        protocolVersion: compatibility.protocolVersion,
-        opencodeVersion: compatibility.server.version,
-        capabilities: compatibility.capabilities,
       })
-    : Compatibility.cases.Legacy.make({ role: compatibility.role })
-}
     const finish = yield* SharedEffect.make(
       complete(server.clients.finish().pipe(Effect.as([]))),
     )
     const settle = yield* SharedEffect.make(complete(server.clients.settle()))
     yield* Effect.addFinalizer(() => server.llm.shutdown())
-    const llm: Llm = {
-      queue: server.llm.queue,
-      send: server.llm.send,
-      serve: server.llm.serve,
-      title: server.llm.title,
-      settle: server.llm.settle,
-    }
+    const llm: Llm = server.llm
     const driver: Driver | undefined = primary === undefined
       ? undefined
       : {

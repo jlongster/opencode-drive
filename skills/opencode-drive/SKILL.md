@@ -119,11 +119,11 @@ yield* secondary.ui.screenshot("secondary")
 
 ### Reports And Paths
 
-`OpenCodeDriver` exports branded `AbsolutePath` and `RelativePath` schemas, the tagged `ReportPath` schema, and the versioned `RunReport` evidence schema. It also exports `decodeAbsolutePath`, `decodeRelativePath`, and `decodeRunReport` for validating unknown values. Artifact report paths are portable `/`-separated relative paths; external report paths are absolute POSIX or Windows paths.
+`OpenCodeDriver` exports a branded `AbsolutePath` schema and a compact `RunReport` containing the artifact root, retention, recording paths, and endpoint compatibility. It also exports `decodeAbsolutePath` and `decodeRunReport` for validating unknown values.
 
-These contracts are available for code that creates or consumes reports, but they are not yet integrated into the `run` or `OpenCodeDriver.use` lifecycle. Do not claim that a run emits or returns a `RunReport`; use the concrete paths returned by UI methods, `driver.artifacts`, `driver.recording?.path`, and `driver.settle()` as applicable.
+`driver.settle()` returns the report with its recording paths. Use `OpenCodeDriver.useReport(options, run)` when a safe lifecycle program also needs the report alongside its result.
 
-OpenCode protocol handshake reporting and OpenCode client/tool simulation APIs are not supported public workflows yet.
+Drive prefers protocol negotiation and reports explicit legacy fallback. Set `opencode.compatibility` to `"required"` when protocol skew must fail before the program runs. OpenCode client and full tool lifecycle simulation APIs remain follow-ups.
 
 ## Promise Compatibility Scripts
 

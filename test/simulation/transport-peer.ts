@@ -72,12 +72,13 @@ export function sendError(
   socket: Bun.ServerWebSocket<undefined>,
   request: WireRequest,
   message: string,
+  code = -32000,
 ) {
   socket.send(
     JSON.stringify({
       jsonrpc: "2.0",
       id: request.id,
-      error: { code: -32000, message },
+      error: { code, message },
     }),
   )
 }

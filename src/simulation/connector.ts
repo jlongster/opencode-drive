@@ -3,6 +3,7 @@ import * as Cause from "effect/Cause"
 import * as Deferred from "effect/Deferred"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
 import * as Queue from "effect/Queue"
 import * as Schema from "effect/Schema"
 import * as Stream from "effect/Stream"
@@ -14,8 +15,7 @@ import {
   Frontend as FrontendProtocol,
   Handshake,
 } from "./protocol.js"
-import { BackendRpcs, UiRpcs } from "./rpc.js"
-import type { SimulationRequestError } from "./rpc.js"
+import { BackendRpcs, SimulationRequestError, UiRpcs } from "./rpc.js"
 
 export class SimulationConnectionError extends Schema.TaggedErrorClass<SimulationConnectionError>()(
   "SimulationConnectionError",
@@ -52,7 +52,7 @@ export const EndpointCompatibility = Schema.TaggedUnion({
 })
 export type EndpointCompatibility = typeof EndpointCompatibility.Type
 
-export type CompatibilityPolicy = "required" | "preferred" | "disabled"
+export type CompatibilityPolicy = "required" | "preferred"
 
 export interface Options {
   readonly connectTimeout?: number
@@ -220,8 +220,6 @@ const negotiate = Effect.fn("SimulationConnector.negotiate")(function* (
       profile: "opencode-simulation-jsonrpc-v0",
       reason,
     })
-  if (policy === "disabled") return legacy("handshake disabled")
-
   const result = yield* Effect.exit(handshake)
   if (result._tag === "Success") {
     const missing = required.filter(
@@ -247,15 +245,18 @@ const negotiate = Effect.fn("SimulationConnector.negotiate")(function* (
   }
   const cause = result.cause
   const message = Cause.pretty(cause)
-  if (policy === "preferred" && isHandshakeUnavailable(message))
+  if (policy === "preferred" && isHandshakeUnavailable(cause))
     return legacy(message)
   return yield* Effect.fail(
     new SimulationCompatibilityError({ endpoint, role, message }),
   )
 })
 
-function isHandshakeUnavailable(message: string) {
-  return /unknown method|method not found|unexpected|decode|parse|schema/i.test(message)
+function isHandshakeUnavailable(cause: Cause.Cause<unknown>) {
+  const failure = Cause.findErrorOption(cause)
+  return Option.isSome(failure) &&
+    failure.value instanceof SimulationRequestError &&
+    failure.value.code === -32601
 }
 
 export * as SimulationConnector from "./connector.js"

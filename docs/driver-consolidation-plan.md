@@ -56,11 +56,10 @@ Make the Effect-native driver the single owner of OpenCode Drive lifecycle behav
 
 ## Phase 4: Structured Run Evidence
 
-1. Add schema-validated `AbsolutePath` and portable artifact `RelativePath` branded types.
-2. Add tagged artifact-relative and external path references.
-3. Add a versioned `RunReport` containing timing, outcome, compatibility, retention, logs, screenshots, recordings, and concrete artifacts.
-4. Return reports from safe library settlement and expose explicit JSON output for the CLI without changing ordinary stdout.
-5. Publish recordings atomically through temporary files and rename on success.
+1. Add a schema-validated `AbsolutePath` branded type.
+2. Add a compact `RunReport` containing the artifact root, retention, recordings, and endpoint compatibility.
+3. Return reports from safe library settlement without changing ordinary CLI stdout.
+4. Publish recordings atomically through temporary files and rename on success.
 
 ## Phase 5: Protocol Compatibility
 

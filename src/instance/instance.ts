@@ -69,13 +69,15 @@ export async function prepareInstanceProject(options: {
   ])
   deepMerge(config, options.config)
   deepMerge(tui, options.tui)
-  const protectGit =
-    Boolean(options.project?.git) || (await hasGitMetadata(files))
-  await options.setup?.({
-    fs: createScriptFileSystem(files, { git: protectGit }),
-    config,
-    tui,
-  })
+  if (options.setup !== undefined) {
+    const protectGit =
+      Boolean(options.project?.git) || (await hasGitMetadata(files))
+    await options.setup({
+      fs: createScriptFileSystem(files, { git: protectGit }),
+      config,
+      tui,
+    })
+  }
   await Promise.all([
     Bun.write(configPath, `${JSON.stringify(config, undefined, 2)}\n`),
     Bun.write(tuiPath, `${JSON.stringify(tui, undefined, 2)}\n`),

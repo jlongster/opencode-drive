@@ -136,9 +136,8 @@ it.live("supports explicit terminal settlement with make", () =>
         )
         const settlement = yield* driver.settle()
         expect(settlement.report).toMatchObject({
-          version: 1,
-          outcome: { _tag: "Succeeded" },
-          retention: { _tag: "Removed", root: driver.artifacts },
+          artifacts: driver.artifacts,
+          retained: false,
           compatibility: [
             { _tag: "Negotiated", role: "backend", protocolVersion: 1 },
             { _tag: "Negotiated", role: "ui", protocolVersion: 1 },
@@ -168,11 +167,11 @@ it.live("returns structured evidence from the safe lifecycle boundary", () =>
       ({ artifacts }) => Effect.succeed(artifacts),
     )
 
-    expect(result.value).toBe(result.report.retention.root)
+    expect(result.value).toBe(result.report.artifacts)
     expect(result.report).toMatchObject({
-      version: 1,
-      outcome: { _tag: "Succeeded" },
-      retention: { _tag: "Retained" },
+      artifacts: result.value,
+      retained: true,
+      recordings: [],
       compatibility: [
         { _tag: "Negotiated", role: "backend", protocolVersion: 1 },
         { _tag: "Negotiated", role: "ui", protocolVersion: 1 },
