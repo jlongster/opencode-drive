@@ -41,14 +41,29 @@ export async function encodeFrames(
       await linkOrCopy(rendered, join(directory, `frame-${String(index).padStart(8, "0")}.png`))
       progress(((index + 1) / frames.length) * 90)
     }
+    const frameDurationMs = 1000 / (options.fps ?? 20)
+    const concat = join(directory, "frames.ffconcat")
+    const entries = frames.flatMap((frame, index) => {
+      const next = frames[index + 1]
+      return [
+        `file frame-${String(index).padStart(8, "0")}.png`,
+        `duration ${(next ? next.atMs - frame.atMs : frameDurationMs) / 1000}`,
+      ]
+    })
+    entries.push(`file frame-${String(frames.length - 1).padStart(8, "0")}.png`)
+    await writeFile(concat, `ffconcat version 1.0\n${entries.join("\n")}\n`, {
+      signal: options.signal,
+    })
     await runFfmpeg(
       options.ffmpegPath ?? "ffmpeg",
       [
         "-y",
-        "-framerate",
-        String(options.fps ?? 20),
+        "-safe",
+        "0",
+        "-f",
+        "concat",
         "-i",
-        join(directory, "frame-%08d.png"),
+        concat,
         "-c:v",
         "libx264",
         "-crf",
@@ -57,8 +72,8 @@ export async function encodeFrames(
         "yuv420p",
         "-movflags",
         "+faststart",
-        "-t",
-        String(Math.max(final.atMs, 1000 / (options.fps ?? 20)) / 1000),
+        "-fps_mode",
+        "vfr",
         output,
       ],
       options.signal,

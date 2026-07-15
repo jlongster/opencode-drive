@@ -220,7 +220,7 @@ test("rejects invalid capture font overrides", async () => {
 })
 
 if (Bun.which("ffmpeg")) {
-  test("exports sampled frames as an H.264 MP4 when ffmpeg is available", async () => {
+  test("exports the off-grid final frame in an H.264 MP4 when ffmpeg is available", async () => {
     const directory = await mkdtemp(join(tmpdir(), "drive-export-ffmpeg-test-"))
     directories.push(directory)
     const timeline = join(directory, "timeline.jsonl")
@@ -237,12 +237,12 @@ if (Bun.which("ffmpeg")) {
         JSON.stringify({
           type: "output",
           at_ms: 0,
-          data: Buffer.from("A").toString("base64"),
+          data: Buffer.from("\x1b[48;2;255;0;0mAAAA").toString("base64"),
         }),
         JSON.stringify({
           type: "output",
-          at_ms: 250,
-          data: Buffer.from("B").toString("base64"),
+          at_ms: 450,
+          data: Buffer.from("\r\x1b[48;2;0;0;255mBBBB").toString("base64"),
         }),
         "",
       ].join("\n"),
@@ -250,14 +250,37 @@ if (Bun.which("ffmpeg")) {
     const output = join(directory, "video.mp4")
     const progress: number[] = []
     const result = await exportRecording(timeline, output, {
+      fps: 5,
       onProgress: (percent) => progress.push(percent),
     })
     const data = await readFile(output)
-    expect(result.frames).toBe(6)
-    expect(result.durationMs).toBe(250)
+    expect(result.frames).toBe(4)
+    expect(result.durationMs).toBe(450)
     expect(data.subarray(4, 8).toString()).toBe("ftyp")
     expect(data.length).toBeGreaterThan(500)
     expect(progress).toEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+
+    const finalFrame = join(directory, "final.png")
+    const decoded = Bun.spawnSync([
+      "ffmpeg",
+      "-v",
+      "error",
+      "-i",
+      output,
+      "-vf",
+      "reverse",
+      "-frames:v",
+      "1",
+      finalFrame,
+    ])
+    expect(decoded.exitCode).toBe(0)
+    const image = await loadImage(finalFrame)
+    const canvas = createCanvas(image.width, image.height)
+    const context = canvas.getContext("2d")
+    context.drawImage(image, 0, 0)
+    const pixel = context.getImageData(9, 19, 1, 1).data
+    expect(pixel[2]).toBeGreaterThan(200)
+    expect(pixel[0]).toBeLessThan(80)
   })
 }
 

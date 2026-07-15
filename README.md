@@ -5,6 +5,16 @@ This project gives your agents control over OpenCode:
 - Run it during development and let your agents see and poke at the running instance
 - Allow your agents to run it in headless mode and drive it to test things
 
+## Requirements
+
+OpenCode Drive requires [Bun](https://bun.sh/) 1.3.14 or newer. MP4 recording export also requires `ffmpeg` on `PATH`.
+
+Install dependencies with:
+
+```sh
+bun install
+```
+
 ## Skill
 
 ```sh
@@ -168,3 +178,11 @@ llm.text("A deliberately slower response", { delay: 20, chunkSize: 10 })
 
 `llm.reasoning()` accepts the same streaming options. Use
 `llm.pause(milliseconds)` to add timing between any two outputs.
+
+## Release validation
+
+Version `0.5.0` is not ready to publish until the driver consolidation is complete. Before publishing a release, run the non-publishing validation command to check, test, and inspect the packed artifact:
+
+```sh
+bun run release:validate
+```
