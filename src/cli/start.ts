@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect"
+import { toStringUnknown } from "effect/Inspectable"
 import { initializeInstance } from "../instance/instance.js"
 import * as DriveProcess from "../instance/process.js"
 import * as OpenCodeInstance from "../instance/runtime.js"
@@ -332,7 +333,7 @@ async function runLifecycle(
         logError(`failed to clean artifacts ${instance.artifacts}: ${error}`)
       })
     if (options.script && failure !== undefined) {
-      logError(failure instanceof Error ? failure.message : String(failure))
+      logError(failure instanceof Error ? failure.message : toStringUnknown(failure))
       process.exit(1)
     }
     if (failure === undefined && cleanupFailure !== undefined) process.exitCode = 1
