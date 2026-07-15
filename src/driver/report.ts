@@ -42,13 +42,13 @@ export type RunOutcome = typeof RunOutcome.Type
 export const Compatibility = Schema.TaggedUnion({
   Negotiated: {
     role: Schema.Literals(["ui", "backend"]),
-    protocolVersion: Schema.NonEmptyString,
-    openCodeVersion: Schema.NonEmptyString,
+    protocolVersion: Schema.Int.check(Schema.isGreaterThan(0)),
+    opencodeVersion: Schema.NonEmptyString,
     capabilities: Schema.Array(Schema.NonEmptyString),
   },
   Legacy: {
     role: Schema.Literals(["ui", "backend"]),
-    openCodeVersion: Schema.optionalKey(Schema.NonEmptyString),
+    opencodeVersion: Schema.optionalKey(Schema.NonEmptyString),
   },
 })
 export type Compatibility = typeof Compatibility.Type

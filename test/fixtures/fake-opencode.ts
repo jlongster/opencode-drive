@@ -91,7 +91,11 @@ const backend = role === "client" ? undefined : Bun.serve({
         )
       }
       const result =
-        request.method === "llm.attach" ? { attached: true } : { ok: true }
+        request.method === "simulation.handshake"
+          ? handshake(request.params, "backend")
+          : request.method === "llm.attach"
+            ? { attached: true }
+            : { ok: true }
       if (request.id !== undefined)
         socket.send(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }))
       if (request.method === "llm.attach") {
@@ -171,6 +175,7 @@ await new Promise<void>((resolve) => {
 await Promise.all([ui?.stop(true), backend?.stop(true)])
 
 function frontend(method: string, params: unknown) {
+  if (method === "simulation.handshake") return handshake(params, "ui")
   if (method === "ui.capture") {
     return {
       cols: 80,
@@ -229,6 +234,26 @@ function frontend(method: string, params: unknown) {
         editor: true,
       },
     ],
+  }
+}
+
+function handshake(params: unknown, role: "ui" | "backend") {
+  if (!isRecord(params)) throw new Error("invalid handshake")
+  const required = Array.isArray(params.requiredCapabilities)
+    ? params.requiredCapabilities.filter((value): value is string =>
+        typeof value === "string"
+      )
+    : []
+  const optional = Array.isArray(params.optionalCapabilities)
+    ? params.optionalCapabilities.filter((value): value is string =>
+        typeof value === "string"
+      )
+    : []
+  return {
+    protocolVersion: 1,
+    role,
+    server: { name: "opencode", version: "test" },
+    capabilities: [...required, ...optional],
   }
 }
 

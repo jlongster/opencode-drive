@@ -20,6 +20,7 @@ import * as OpenCodeProject from "./project.js"
 import * as PreparedDriver from "./prepared.js"
 import * as OpenCodeServer from "./server.js"
 import type * as OpenCodeUi from "./ui.js"
+import type { RunReport } from "./report.js"
 
 export interface Options {
   readonly project?: ScriptProject
@@ -65,6 +66,12 @@ export interface Llm {
 
 export interface Settlement {
   readonly recordings: ReadonlyArray<string>
+  readonly report: RunReport
+}
+
+export interface RunResult<A> {
+  readonly value: A
+  readonly report: RunReport
 }
 
 const makeWithServices = Effect.fn("OpenCodeDriver.makeWithServices")(
@@ -88,6 +95,7 @@ const makeWithServices = Effect.fn("OpenCodeDriver.makeWithServices")(
     const prepared = yield* PreparedDriver.makeWithServices(instance, {
       visible: options.opencode?.visible,
       client: options.client,
+      artifactsRetained: options.keepArtifacts ?? false,
     })
     if (prepared.driver === undefined)
       return yield* Effect.die(
@@ -106,26 +114,34 @@ const makeManaged = (options: Options = {}) =>
 export const make = (options: Options = {}) =>
   makeManaged(options).pipe(Effect.map(({ driver }) => driver))
 
-export const use = <A, E, R>(
+export const useReport = <A, E, R>(
   options: Options,
   f: (driver: Driver) => Effect.Effect<A, E, R>,
 ) =>
   Effect.scoped(
-    Effect.acquireUseRelease(
-      makeManaged(options),
-      ({ driver, failure }) => Effect.raceFirst(f(driver), failure),
-      ({ driver }, useExit) =>
-        Effect.gen(function* () {
-          const settlement = yield* Effect.exit(driver.settle())
-          if (Exit.isSuccess(settlement)) return undefined
-          if (Exit.isFailure(useExit))
-            return yield* Effect.failCause(
-              Cause.combine(useExit.cause, settlement.cause),
-            )
+    Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const { driver, failure } = yield* makeManaged(options)
+        const useExit = yield* Effect.exit(
+          restore(Effect.raceFirst(f(driver), failure)),
+        )
+        const settlement = yield* Effect.exit(driver.settle())
+        if (Exit.isFailure(useExit) && Exit.isFailure(settlement))
+          return yield* Effect.failCause(
+            Cause.combine(useExit.cause, settlement.cause),
+          )
+        if (Exit.isFailure(useExit)) return yield* Effect.failCause(useExit.cause)
+        if (Exit.isFailure(settlement))
           return yield* Effect.failCause(settlement.cause)
-        }),
+        return { value: useExit.value, report: settlement.value.report }
+      }),
     ),
   )
+
+export const use = <A, E, R>(
+  options: Options,
+  f: (driver: Driver) => Effect.Effect<A, E, R>,
+) => useReport(options, f).pipe(Effect.map(({ value }) => value))
 
 export { OpenCodeDriverError } from "./error.js"
 export {

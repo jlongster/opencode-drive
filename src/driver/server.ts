@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect"
 import * as Deferred from "effect/Deferred"
 import * as Ref from "effect/Ref"
+import * as Semaphore from "effect/Semaphore"
 import * as Scope from "effect/Scope"
 import * as Exit from "effect/Exit"
 import * as OpenCodeInstance from "../instance/runtime.js"
@@ -14,6 +15,7 @@ export interface Target {
   readonly dev?: string
   readonly env?: Readonly<Record<string, string>>
   readonly visible?: boolean
+  readonly compatibility?: SimulationConnector.CompatibilityPolicy
 }
 
 export interface Options {
@@ -24,9 +26,17 @@ export interface Options {
 export interface Server {
   readonly llm: LlmController.Controller
   readonly clients: OpenCodeClients.Control
-  readonly launch: () => Effect.Effect<void, OpenCodeDriverError | LlmController.LlmControllerError>
+  readonly launch: () => Effect.Effect<
+    void,
+    | OpenCodeDriverError
+    | LlmController.LlmControllerError
+    | SimulationConnector.SimulationCompatibilityError
+  >
   readonly kill: () => Effect.Effect<void, OpenCodeDriverError>
   readonly failure: Effect.Effect<never, OpenCodeDriverError | LlmController.LlmControllerError>
+  readonly compatibility: Effect.Effect<
+    ReadonlyArray<SimulationConnector.EndpointCompatibility>
+  >
 }
 
 export const make = Effect.fn("OpenCodeServer.make")(function* (
@@ -40,6 +50,7 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
     instance,
     target.visible ?? false,
     connector,
+    target.compatibility,
   )
   const parentScope = yield* Scope.Scope
   const generation = yield* Ref.make<
@@ -50,8 +61,12 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
     } | undefined
   >(undefined)
   const unexpectedExit = yield* Deferred.make<never, OpenCodeDriverError>()
+  const lifecycle = yield* Semaphore.make(1)
+  let compatibility: ReadonlyArray<
+    SimulationConnector.EndpointCompatibility
+  > = []
 
-  const launch = Effect.fn("OpenCodeServer.launch")(function* () {
+  const launchGeneration = Effect.fn("OpenCodeServer.launch")(function* () {
     if ((yield* Ref.get(generation)) !== undefined)
       return yield* Effect.fail(
         error("server.launch", "the script server has already been launched"),
@@ -61,7 +76,9 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
       Effect.mapError((cause) => error("server.launch", cause)),
       Effect.onError(() => Scope.close(scope, Exit.void)),
     )
-    const backend = yield* connector.backend(launched.endpoint).pipe(
+    const backend = yield* connector.backend(launched.endpoint, {
+      compatibility: target.compatibility,
+    }).pipe(
       Scope.provide(scope),
       Effect.mapError((cause) => error("server.connect", cause)),
       Effect.onError(() =>
@@ -83,6 +100,7 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
       Effect.mapError((cause) => error("server.launch", cause)),
     )
     yield* Ref.set(generation, { scope, attachment, process })
+    compatibility = [...compatibility, backend.compatibility]
     yield* process.exitCode.pipe(
       Effect.tap(() => Effect.sleep(25)),
       Effect.flatMap((status) =>
@@ -103,7 +121,7 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
     return undefined
   })
 
-  const kill = Effect.fn("OpenCodeServer.kill")(function* () {
+  const killGeneration = Effect.fn("OpenCodeServer.kill")(function* () {
     const active = yield* Ref.get(generation)
     if (active === undefined)
       return yield* Effect.fail(
@@ -120,6 +138,8 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
     if (Exit.isFailure(stopped)) return yield* Effect.failCause(stopped.cause)
     return undefined
   })
+  const launch = () => lifecycle.withPermit(launchGeneration())
+  const kill = () => lifecycle.withPermit(killGeneration())
 
   return {
     llm,
@@ -130,6 +150,7 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
       llm.failure,
       Deferred.await(unexpectedExit),
     ),
+    compatibility: Effect.sync(() => compatibility),
   } satisfies Server
 })
 

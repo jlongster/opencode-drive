@@ -53,7 +53,65 @@ export namespace JsonRpc {
   }
 }
 
+export namespace Handshake {
+  export const ProtocolVersion = Schema.Literal(1)
+  export type ProtocolVersion = Schema.Schema.Type<typeof ProtocolVersion>
+
+  export const Capability = Schema.NonEmptyString
+  export type Capability = Schema.Schema.Type<typeof Capability>
+
+  export const EndpointRole = Schema.Literals(["ui", "backend"])
+  export type EndpointRole = Schema.Schema.Type<typeof EndpointRole>
+
+  export const Identity = Schema.Struct({
+    name: Schema.NonEmptyString,
+    version: Schema.NonEmptyString,
+  })
+  export interface Identity extends Schema.Schema.Type<typeof Identity> {}
+
+  export const Params = Schema.Struct({
+    client: Identity,
+    expectedRole: EndpointRole,
+    offeredVersions: Schema.Array(
+      Schema.Int.check(Schema.isGreaterThan(0)),
+    ).check(Schema.isMinLength(1), Schema.isUnique()),
+    requiredCapabilities: Schema.Array(Capability).check(Schema.isUnique()),
+    optionalCapabilities: Schema.Array(Capability).check(Schema.isUnique()),
+  })
+  export interface Params extends Schema.Schema.Type<typeof Params> {}
+
+  export const Response = Schema.Struct({
+    protocolVersion: ProtocolVersion,
+    role: EndpointRole,
+    server: Identity,
+    capabilities: Schema.Array(Capability),
+  })
+  export interface Response extends Schema.Schema.Type<typeof Response> {}
+
+  export const Request = Schema.Struct({
+    ...JsonRpc.RequestFields,
+    method: Schema.Literal("simulation.handshake"),
+    params: Params,
+  })
+  export interface Request extends Schema.Schema.Type<typeof Request> {}
+}
+
 export namespace Frontend {
+  export const Capabilities = [
+    "ui.type",
+    "ui.press",
+    "ui.enter",
+    "ui.arrow",
+    "ui.focus",
+    "ui.click",
+    "ui.resize",
+    "ui.matches",
+    "ui.screenshot",
+    "ui.state",
+    "ui.capture",
+    "ui.recording.finish",
+  ] as const satisfies ReadonlyArray<Handshake.Capability>
+
   export const KeyModifiers = Schema.Struct({
     ctrl: Schema.optional(Schema.Boolean),
     shift: Schema.optional(Schema.Boolean),
@@ -202,6 +260,7 @@ export namespace Frontend {
     extends Schema.Schema.Type<typeof ResizeParams> {}
 
   export const Request = Schema.Union([
+    Handshake.Request,
     Schema.Struct({
       ...JsonRpc.RequestFields,
       method: Schema.Literal("ui.type"),
@@ -256,13 +315,28 @@ export namespace Frontend {
 }
 
 export namespace Backend {
+  export const Capabilities = [
+    "llm.attach",
+    "llm.chunk",
+    "llm.finish",
+    "llm.disconnect",
+    "llm.pending",
+    "llm.request",
+  ] as const satisfies ReadonlyArray<Handshake.Capability>
+
   export const Item = Schema.Union([
     Schema.Struct({ type: Schema.Literal("textDelta"), text: Schema.String }),
     Schema.Struct({
       type: Schema.Literal("reasoningDelta"),
       text: Schema.String,
     }),
-    Llm.ToolCall,
+    Schema.Struct({
+      type: Schema.Literal("toolCall"),
+      index: Schema.Number,
+      id: Schema.String,
+      name: Schema.String,
+      input: Schema.Json,
+    }),
     Llm.Raw,
   ])
   export type Item = Schema.Schema.Type<typeof Item>
@@ -305,6 +379,7 @@ export namespace Backend {
   > {}
 
   export const Request = Schema.Union([
+    Handshake.Request,
     Schema.Struct({
       ...JsonRpc.RequestFields,
       method: Schema.Literal("llm.chunk"),

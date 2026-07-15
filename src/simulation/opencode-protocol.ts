@@ -28,6 +28,7 @@ export interface Notification {
 
 export interface Options {
   readonly connectTimeout?: number
+  readonly firstWireId?: number
   readonly onClose?: () => Effect.Effect<void>
   readonly onNotification?: (
     notification: Notification,
@@ -73,7 +74,7 @@ export const make = Effect.fn("OpenCodeRpcProtocol.make")(function* (
         number,
         Map<string | number, number>
       >()
-      let nextWireId = 1
+      let nextWireId = options?.firstWireId ?? 1
       let currentError: RpcClientError.RpcClientError | undefined
 
       const removePending = (wireId: number) => {

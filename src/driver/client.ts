@@ -19,6 +19,7 @@ export interface Options {
 
 export interface Client {
   readonly ui: OpenCodeUi.Ui
+  readonly compatibility: SimulationConnector.EndpointCompatibility
   readonly recording?: Recording
   readonly close: () => Effect.Effect<void>
 }
@@ -52,6 +53,7 @@ export const make = Effect.fn("OpenCodeClient.make")(function* (
   identity: string,
   options: Options,
   connector: SimulationConnector.Interface,
+  compatibility?: SimulationConnector.CompatibilityPolicy,
 ) {
   if (visible && options.recording)
     return yield* Effect.fail(
@@ -74,7 +76,7 @@ export const make = Effect.fn("OpenCodeClient.make")(function* (
         ),
       ),
   )
-  const connection = yield* connector.ui(launched.endpoint)
+  const connection = yield* connector.ui(launched.endpoint, { compatibility })
   const ui = OpenCodeUi.make(connection)
   yield* ui.waitFor((state) => state.focused.editor, {
     timeout: 30_000,
@@ -121,6 +123,7 @@ export const make = Effect.fn("OpenCodeClient.make")(function* (
 
   return {
     ui,
+    compatibility: connection.compatibility,
     close: () => Effect.void,
     _exitCode: launched.process.exitCode.pipe(
       Effect.mapError((cause) => error("client.exit", cause)),
@@ -144,6 +147,7 @@ export interface Clients {
   ) => Effect.Effect<
     Client,
     | OpenCodeDriverError
+    | SimulationConnector.SimulationCompatibilityError
     | OpenCodeUi.OperationError
     | OpenCodeUi.UiWaitOptionsError
   >
@@ -154,6 +158,7 @@ export interface Clients {
   ) => Effect.Effect<
     Client,
     | OpenCodeDriverError
+    | SimulationConnector.SimulationCompatibilityError
     | OpenCodeUi.OperationError
     | OpenCodeUi.UiWaitOptionsError
   >
@@ -165,6 +170,9 @@ export interface UnexpectedExit {
 }
 
 export interface Control extends Clients {
+  readonly compatibility: Effect.Effect<
+    ReadonlyArray<SimulationConnector.EndpointCompatibility>
+  >
   readonly unexpectedExit: Effect.Effect<UnexpectedExit>
   readonly finish: () => Effect.Effect<
     void,
@@ -180,6 +188,7 @@ export const makeClients = Effect.fn("OpenCodeClients.make")(function* (
   instance: OpenCodeInstance.Instance,
   visible: boolean,
   connector: SimulationConnector.Interface,
+  compatibilityPolicy?: SimulationConnector.CompatibilityPolicy,
 ) {
   const parentScope = yield* Scope.Scope
   const clientsScope = yield* Scope.fork(parentScope, "parallel")
@@ -202,6 +211,9 @@ export const makeClients = Effect.fn("OpenCodeClients.make")(function* (
     new Map(),
   )
   const unexpectedExit = yield* Deferred.make<UnexpectedExit>()
+  let compatibility: ReadonlyArray<
+    SimulationConnector.EndpointCompatibility
+  > = []
 
   const launch = Effect.fn("OpenCodeClients.launch")(function* (
     identity: string,
@@ -227,6 +239,7 @@ export const makeClients = Effect.fn("OpenCodeClients.make")(function* (
           identity,
           options,
           connector,
+          compatibilityPolicy,
         ).pipe(
           Scope.provide(scope),
           Effect.onError(() =>
@@ -237,6 +250,7 @@ export const makeClients = Effect.fn("OpenCodeClients.make")(function* (
             }).pipe(Effect.andThen(Scope.close(scope, Exit.void))),
           ),
         )
+        compatibility = [...compatibility, client.compatibility]
         const recording = client._recording
         if (recording !== undefined) {
           yield* Ref.update(recordings, (active) => [
@@ -275,6 +289,7 @@ export const makeClients = Effect.fn("OpenCodeClients.make")(function* (
         )
         const publicClient: Client = {
           ui: client.ui,
+          compatibility: client.compatibility,
           ...(client.recording === undefined
             ? {}
             : { recording: client.recording }),
@@ -359,6 +374,7 @@ export const makeClients = Effect.fn("OpenCodeClients.make")(function* (
     make: makeClient,
     launch,
     unexpectedExit: Deferred.await(unexpectedExit),
+    compatibility: Effect.sync(() => compatibility),
     finish,
     settle,
   } satisfies Control

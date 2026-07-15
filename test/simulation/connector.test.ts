@@ -18,8 +18,41 @@ describe("SimulationConnector", () => {
       const connection = yield* connector.ui(peer.url)
 
       expect(connection.endpoint).toBe(peer.url)
+      expect(connection.compatibility).toMatchObject({
+        _tag: "Negotiated",
+        role: "ui",
+        protocolVersion: 1,
+        server: { name: "opencode", version: "test" },
+      })
       expect(yield* connection.rpc["ui.state"]()).toEqual(state)
       expect(peer.received.map(({ request }) => request)).toEqual([{ jsonrpc: "2.0", id: 1, method: "ui.state" }])
+    }).pipe(Effect.provide(SimulationConnector.layer)),
+  )
+
+  it.live("reports legacy fallback and rejects it when negotiation is required", () =>
+    Effect.gen(function* () {
+      const peer = startTransportPeer(
+        ({ request, socket }) => sendResult(socket, request, state),
+        { handshake: false },
+      )
+      yield* Effect.addFinalizer(() => Effect.promise(() => peer.stop()))
+
+      const connector = yield* SimulationConnector.Service
+      const legacy = yield* connector.ui(peer.url)
+      expect(legacy.compatibility).toMatchObject({
+        _tag: "Legacy",
+        role: "ui",
+        profile: "opencode-simulation-jsonrpc-v0",
+      })
+
+      const error = yield* connector.ui(peer.url, {
+        compatibility: "required",
+      }).pipe(Effect.flip)
+      expect(error).toMatchObject({
+        _tag: "SimulationCompatibilityError",
+        endpoint: peer.url,
+        role: "ui",
+      })
     }).pipe(Effect.provide(SimulationConnector.layer)),
   )
 

@@ -16,6 +16,7 @@ export interface BackendSimulationClientOptions {
   readonly port?: number
   readonly portAttempts?: number
   readonly timeout?: number
+  readonly compatibility?: SimulationConnector.CompatibilityPolicy
 }
 
 export class BackendSimulationError extends Error {
@@ -62,14 +63,22 @@ export class BackendSimulationClient {
   ): Promise<BackendSimulationClient> {
     const timeout = options?.timeout ?? 30_000
     if (options?.url !== undefined)
-      return BackendSimulationClient.acquire(options.url, timeout)
+      return BackendSimulationClient.acquire(
+        options.url,
+        timeout,
+        options.compatibility,
+      )
 
     const first = options?.port ?? defaultBackendPort
     const attempts = options?.portAttempts ?? 10
     for (let offset = 0; offset < attempts; offset++) {
       const url = `ws://127.0.0.1:${first + offset}`
       try {
-        return await BackendSimulationClient.acquire(url, timeout)
+        return await BackendSimulationClient.acquire(
+          url,
+          timeout,
+          options?.compatibility,
+        )
       } catch {
         // Occupied by another service or not listening; try the next port.
       }
@@ -227,7 +236,11 @@ export class BackendSimulationClient {
     })
   }
 
-  private static async acquire(url: string, timeout: number) {
+  private static async acquire(
+    url: string,
+    timeout: number,
+    compatibility?: SimulationConnector.CompatibilityPolicy,
+  ) {
     const scope = await Effect.runPromise(Scope.make())
     try {
       const connection = await Effect.runPromise(
@@ -235,6 +248,7 @@ export class BackendSimulationClient {
           connectTimeout: timeout,
           requestTimeout: timeout,
           attach: false,
+          compatibility,
         }).pipe(Scope.provide(scope)),
       )
       return new BackendSimulationClient(scope, connection, url, timeout)

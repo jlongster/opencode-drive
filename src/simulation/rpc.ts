@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
-import { Backend, Frontend } from "./protocol.js"
+import { Backend, Frontend, Handshake } from "./protocol.js"
 
 export class SimulationRequestError extends Schema.TaggedErrorClass<SimulationRequestError>()(
   "SimulationRequestError",
@@ -29,6 +29,10 @@ const request = <
   })
 
 export const UiRpcs = RpcGroup.make(
+  request("simulation.handshake", {
+    payload: Handshake.Params,
+    success: Handshake.Response,
+  }),
   request("ui.state", { success: Frontend.State }),
   request("ui.capture", { success: Frontend.CapturedFrame }),
   request("ui.matches", {
@@ -70,6 +74,10 @@ export const UiRpcs = RpcGroup.make(
 )
 
 export const BackendRpcs = RpcGroup.make(
+  request("simulation.handshake", {
+    payload: Handshake.Params,
+    success: Handshake.Response,
+  }),
   request("llm.attach", { success: Backend.Attached }),
   request("llm.chunk", {
     payload: Backend.ChunkParams,

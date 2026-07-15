@@ -17,6 +17,7 @@ export interface SimulationClientOptions {
   readonly portAttempts?: number
   /** Per-call timeout in milliseconds. Defaults to 30_000. */
   readonly timeout?: number
+  readonly compatibility?: SimulationConnector.CompatibilityPolicy
   readonly onScreenshot?: (path: string) => void
 }
 
@@ -50,14 +51,24 @@ export class SimulationClient {
   ): Promise<SimulationClient> {
     const timeout = options?.timeout ?? 30_000
     if (options?.url !== undefined)
-      return SimulationClient.acquire(options.url, timeout, options.onScreenshot)
+      return SimulationClient.acquire(
+        options.url,
+        timeout,
+        options.onScreenshot,
+        options.compatibility,
+      )
 
     const first = options?.port ?? defaultPort
     const attempts = options?.portAttempts ?? 10
     for (let offset = 0; offset < attempts; offset++) {
       const url = `ws://127.0.0.1:${first + offset}`
       try {
-        return await SimulationClient.acquire(url, timeout, options?.onScreenshot)
+        return await SimulationClient.acquire(
+          url,
+          timeout,
+          options?.onScreenshot,
+          options?.compatibility,
+        )
       } catch {
         // Occupied by another service or not listening; try the next port.
       }
@@ -248,11 +259,15 @@ export class SimulationClient {
     url: string,
     timeout: number,
     onScreenshot?: (path: string) => void,
+    compatibility?: SimulationConnector.CompatibilityPolicy,
   ) {
     const scope = await Effect.runPromise(Scope.make())
     try {
       const connection = await Effect.runPromise(
-        SimulationConnector.ui(url, { connectTimeout: timeout }).pipe(
+        SimulationConnector.ui(url, {
+          connectTimeout: timeout,
+          compatibility,
+        }).pipe(
           Scope.provide(scope),
         ),
       )

@@ -134,7 +134,17 @@ it.live("supports explicit terminal settlement with make", () =>
         yield* driver.llm.queue(
           Llm.text("explicit settlement", { delay: 0, chunkSize: 100 }),
         )
-        yield* driver.settle()
+        const settlement = yield* driver.settle()
+        expect(settlement.report).toMatchObject({
+          version: 1,
+          outcome: { _tag: "Succeeded" },
+          retention: { _tag: "Removed", root: driver.artifacts },
+          compatibility: [
+            { _tag: "Negotiated", role: "backend", protocolVersion: 1 },
+            { _tag: "Negotiated", role: "ui", protocolVersion: 1 },
+          ],
+          recordings: [],
+        })
         const error = yield* driver.clients.make().pipe(Effect.flip)
         expect(error).toMatchObject({
           _tag: "OpenCodeDriverError",
@@ -145,6 +155,30 @@ it.live("supports explicit terminal settlement with make", () =>
     expect(
       yield* Effect.promise(() => stat(artifacts).then(() => true, () => false)),
     ).toBe(false)
+  }),
+)
+
+it.live("returns structured evidence from the safe lifecycle boundary", () =>
+  Effect.gen(function* () {
+    const result = yield* OpenCodeDriver.useReport(
+      {
+        keepArtifacts: true,
+        opencode: { command: fakeOpenCode },
+      },
+      ({ artifacts }) => Effect.succeed(artifacts),
+    )
+
+    expect(result.value).toBe(result.report.retention.root)
+    expect(result.report).toMatchObject({
+      version: 1,
+      outcome: { _tag: "Succeeded" },
+      retention: { _tag: "Retained" },
+      compatibility: [
+        { _tag: "Negotiated", role: "backend", protocolVersion: 1 },
+        { _tag: "Negotiated", role: "ui", protocolVersion: 1 },
+      ],
+    })
+    yield* Effect.promise(() => rm(result.value, { recursive: true, force: true }))
   }),
 )
 

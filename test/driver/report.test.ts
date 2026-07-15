@@ -107,8 +107,8 @@ describe("RunReport", () => {
       {
         _tag: "Negotiated" as const,
         role: "ui" as const,
-        protocolVersion: "1",
-        openCodeVersion: "2.0.0",
+        protocolVersion: 1,
+        opencodeVersion: "2.0.0",
         capabilities: ["ui.capture"],
       },
       { _tag: "Legacy" as const, role: "backend" as const },
@@ -146,8 +146,8 @@ describe("RunReport", () => {
     expect(report.compatibility[0]).toEqual(
       Compatibility.cases.Negotiated.make({
         role: "ui",
-        protocolVersion: "1",
-        openCodeVersion: "2.0.0",
+        protocolVersion: 1,
+        opencodeVersion: "2.0.0",
         capabilities: ["ui.capture"],
       }),
     )

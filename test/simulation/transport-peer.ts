@@ -13,6 +13,7 @@ export interface ReceivedRequest {
 
 export function startTransportPeer(
   onRequest: (received: ReceivedRequest) => void,
+  options?: { readonly handshake?: boolean },
 ) {
   const received: ReceivedRequest[] = []
   const server = Bun.serve<undefined>({
@@ -26,6 +27,26 @@ export function startTransportPeer(
       message(socket, message) {
         const raw = String(message)
         const value = { raw, request: JSON.parse(raw) as WireRequest, socket }
+        if (
+          value.request.method === "simulation.handshake" &&
+          options?.handshake !== false
+        ) {
+          const params = value.request.params as {
+            readonly expectedRole: "ui" | "backend"
+            readonly requiredCapabilities: ReadonlyArray<string>
+            readonly optionalCapabilities: ReadonlyArray<string>
+          }
+          sendResult(socket, value.request, {
+            protocolVersion: 1,
+            role: params.expectedRole,
+            server: { name: "opencode", version: "test" },
+            capabilities: [
+              ...params.requiredCapabilities,
+              ...params.optionalCapabilities,
+            ],
+          })
+          return
+        }
         received.push(value)
         onRequest(value)
       },
