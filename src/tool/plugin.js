@@ -89,7 +89,7 @@ export default {
   effect: (ctx) =>
     ctx.tool.transform((tools) => {
       for (const name of ctx.options.tools) {
-        tools.addDynamic(
+        tools.add(
           name,
           {
             description: descriptions[name],
