@@ -1,12 +1,5 @@
 import { defineFlows } from "../dsl"
-import { stepsFromFlow } from "../flow"
-import { patchSuccessFlow } from "../../scenarios/tools/patch-success"
-import { shellLifecycleFlow } from "../../scenarios/tools/shell-lifecycle"
-import { subagentLifecycleFlow } from "../../scenarios/subagents/subagent-lifecycle"
-import { searchLifecycleFlow } from "../../scenarios/tools/search-lifecycle"
-import { webLifecycleFlow } from "../../scenarios/tools/web-lifecycle"
-import { assistantLifecycleFlow } from "../../scenarios/responses/assistant-lifecycle"
-import { questionLifecycleFlow } from "../../scenarios/tools/question-lifecycle"
+import { executableFlowDefinitions } from "../../scenarios"
 import { screens } from "./screens"
 
 export const flowGroups = defineFlows(screens, {
@@ -65,42 +58,7 @@ export const flowGroups = defineFlows(screens, {
   "tool-use": {
     label: "Tool use",
     flows: {
-      "patch-success-lifecycle": {
-        title: patchSuccessFlow.title,
-        description: patchSuccessFlow.description,
-        replayable: true,
-        steps: stepsFromFlow(patchSuccessFlow),
-      },
-      "shell-lifecycle": {
-        title: shellLifecycleFlow.title,
-        description: shellLifecycleFlow.description,
-        replayable: true,
-        steps: stepsFromFlow(shellLifecycleFlow),
-      },
-      "search-lifecycle": {
-        title: searchLifecycleFlow.title,
-        description: searchLifecycleFlow.description,
-        replayable: true,
-        steps: stepsFromFlow(searchLifecycleFlow),
-      },
-      "web-lifecycle": {
-        title: webLifecycleFlow.title,
-        description: webLifecycleFlow.description,
-        replayable: true,
-        steps: stepsFromFlow(webLifecycleFlow),
-      },
-      "assistant-lifecycle": {
-        title: assistantLifecycleFlow.title,
-        description: assistantLifecycleFlow.description,
-        replayable: true,
-        steps: stepsFromFlow(assistantLifecycleFlow),
-      },
-      "question-lifecycle": {
-        title: questionLifecycleFlow.title,
-        description: questionLifecycleFlow.description,
-        replayable: true,
-        steps: stepsFromFlow(questionLifecycleFlow),
-      },
+      ...executableFlowDefinitions("tool-use"),
       "approving-a-tool-call": {
         title: "Approving a tool call",
         description: "Review a requested operation and choose its permission scope.",
@@ -123,14 +81,11 @@ export const flowGroups = defineFlows(screens, {
   },
   subagents: {
     label: "Subagents",
-    flows: {
-      "subagent-lifecycle": {
-        title: subagentLifecycleFlow.title,
-        description: subagentLifecycleFlow.description,
-        replayable: true,
-        steps: stepsFromFlow(subagentLifecycleFlow),
-      },
-    },
+    flows: executableFlowDefinitions("subagents"),
+  },
+  responses: {
+    label: "Responses",
+    flows: executableFlowDefinitions("responses"),
   },
   configuration: {
     label: "Configuration",

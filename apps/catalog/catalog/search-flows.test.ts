@@ -5,7 +5,6 @@ import { webLifecycleFlow } from "../scenarios/tools/web-lifecycle"
 describe("search and web executable flows", () => {
   test("exports project search states in execution order", () => {
     expect(searchLifecycleFlow.states.map((state) => state.address)).toEqual([
-      "search-lifecycle/glob-streaming",
       "search-lifecycle/glob-success",
       "search-lifecycle/glob-empty",
       "search-lifecycle/grouped-exploration",

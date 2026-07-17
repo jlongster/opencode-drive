@@ -76,32 +76,39 @@ export const webLifecycleFlow = defineExecutableFlow(
               name: "webfetch",
               input: { url: "https://example.com", format: "text" },
             },
-            { delay: 100, chunkSize: 5 },
+            { delay: 300, chunkSize: 1 },
           ),
           Llm.finish("tool-calls"),
         )
+        yield* driver.llm.queue(Llm.text("The web fetch is complete."))
         yield* driver.llm.queue(
-          Llm.toolCall({
-            index: 0,
-            id: "call_websearch_failure",
-            name: "websearch",
-            input: { query: "opencode terminal interface", numResults: 3 },
-          }),
+          Llm.toolCall(
+            {
+              index: 0,
+              id: "call_websearch_failure",
+              name: "websearch",
+              input: { query: "opencode terminal interface", numResults: 3 },
+            },
+            { delay: 300, chunkSize: 1 },
+          ),
           Llm.finish("tool-calls"),
         )
+        yield* driver.llm.queue(Llm.text("The web search attempt is complete."))
 
-        yield* driver.ui.submit("Fetch the Example Domain, then search the web.")
-        yield* driver.ui.waitFor("Fetching from the web...", { timeout: 15_000 })
+        yield* driver.ui.submit("Fetch the Example Domain.")
+        yield* driver.ui.waitFor("Fetching from the web...", { timeout: 30_000 })
         yield* checkpoint(webfetchStreaming)
         yield* driver.ui.waitFor("Permission required", { timeout: 15_000 })
         yield* driver.ui.enter()
-        yield* driver.ui.waitFor("WebFetch https://example.com", { timeout: 30_000 })
+        yield* driver.ui.waitFor("The web fetch is complete.", { timeout: 30_000 })
         yield* checkpoint(webfetchSuccess)
+
+        yield* driver.ui.submit("Search the web for the OpenCode terminal interface.")
+        yield* driver.ui.waitFor("Searching web...", { timeout: 30_000 })
+        yield* checkpoint(websearchRunning)
         yield* driver.ui.waitFor("Permission required", { timeout: 15_000 })
         yield* driver.ui.enter()
-        yield* driver.ui.waitFor("Searching web...", { timeout: 15_000 })
-        yield* checkpoint(websearchRunning)
-        yield* driver.ui.waitFor("websearch", { timeout: 30_000 })
+        yield* driver.ui.waitFor("The web search attempt is complete.", { timeout: 30_000 })
         yield* checkpoint(websearchFailure)
       }),
     )

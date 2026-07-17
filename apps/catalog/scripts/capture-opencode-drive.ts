@@ -1,16 +1,14 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { mkdir, rename, rm } from "node:fs/promises"
+import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { Effect } from "effect"
 import { Llm, OpenCodeDriver } from "opencode-drive"
 import { screens, type CaptureId } from "../catalog/authored/screens"
-import type { NonEmpty, ScreenCategory } from "../catalog/dsl"
-import { executeFlow, type ExecutableFlow, type FlowState } from "../catalog/flow"
+import type { ScreenCategory } from "../catalog/dsl"
+import { executeFlow, type ExecutableScenario } from "../catalog/flow"
 import { patchSuccessFlow } from "../scenarios/tools/patch-success"
-import { shellLifecycleFlow } from "../scenarios/tools/shell-lifecycle"
-import { subagentLifecycleFlow } from "../scenarios/subagents/subagent-lifecycle"
-import { catalogScenarioRuntime } from "../scenarios/runtime"
+import { executableScenarios } from "../scenarios"
+import { catalogScenarioRuntime, catalogViewport } from "../scenarios/runtime"
 import type { DriveManifest, Variant as CaptureSet } from "../catalog/schema"
 import {
   captureSetId,
@@ -45,22 +43,95 @@ type Variant = {
 
 const defaultOpenCode = fileURLToPath(new URL("../../../../opencode-v2-latest/", import.meta.url))
 const options = parseCaptureOptions(process.argv.slice(2), defaultOpenCode)
+const processStartedAt = performance.now()
+const stagingRoot = fileURLToPath(new URL(`../.tmp/capture-staging/${crypto.randomUUID()}/`, import.meta.url))
 const prepared = await prepareCaptureSets(options)
+metric("capture_prepare_ms", processStartedAt)
 const variants = prepared.variants
+let captureSucceeded = false
+const lifecycleScenarios = executableScenarios.filter((scenario) => scenario.id !== patchSuccessFlow.id)
 
 const captureVariant = (variant: Variant) => Effect.gen(function* () {
-  const baseline = yield* captureBaseline(variant)
-  const shell = yield* captureFlow(variant, shellLifecycleFlow)
-  const subagent = yield* captureFlow(variant, subagentLifecycleFlow)
-  return [...baseline, ...shell, ...subagent]
+  if (options.flow !== undefined) {
+    const selected = lifecycleScenarios.find((scenario) => scenario.id === options.flow)
+    if (!selected) {
+      const known = lifecycleScenarios.map((scenario) => scenario.id).join(", ")
+      return yield* Effect.fail(
+        new Error(`Unknown executable flow ${JSON.stringify(options.flow)}. Known flows: ${known}`),
+      )
+    }
+    return yield* captureScenarioProcess(variant, [selected], true)
+  }
+
+  const queued = lifecycleScenarios.filter((scenario) => scenario.llmMode === "queue")
+  const served = lifecycleScenarios.filter((scenario) => scenario.llmMode === "serve")
+  const captures = yield* captureScenarioProcess(variant, queued, false, true)
+  for (const scenario of served) {
+    captures.push(...(yield* captureScenarioProcess(variant, [scenario])))
+  }
+  return captures
 })
 
-const captureBaseline = (variant: Variant) => OpenCodeDriver.use(
-  catalogScenarioRuntime({ opencode: variant.path, theme: variant.theme }),
-  (driver) =>
-    Effect.gen(function* () {
+function captureScenarioProcess(
+  variant: Variant,
+  scenarios: ReadonlyArray<ExecutableScenario>,
+  preview = false,
+  baseline = false,
+) {
+  return OpenCodeDriver.use(
+    catalogScenarioRuntime({ opencode: variant.path, theme: variant.theme }),
+    (driver) => Effect.gen(function* () {
+      const captures = baseline ? [...(yield* captureBaseline(driver, variant))] : []
+      const shared = scenarios.filter((scenario) => scenario.clientIsolation === "shared")
+      if (shared.length > 0) {
+        captures.push(...(yield* captureScenarioClient(driver, variant, shared, preview)))
+      }
+      for (const scenario of scenarios.filter((candidate) => candidate.clientIsolation === "isolated")) {
+        captures.push(...(yield* captureScenarioClient(driver, variant, [scenario], preview)))
+      }
+      return captures
+    }),
+  )
+}
+
+function captureScenarioClient(
+  driver: OpenCodeDriver.Driver,
+  variant: Variant,
+  scenarios: ReadonlyArray<ExecutableScenario>,
+  preview: boolean,
+) {
+  const clientName = `catalog-${scenarios[0]?.id ?? "empty"}-${scenarios.length}`
+  return Effect.acquireUseRelease(
+    driver.clients.launch(clientName, { viewport: catalogViewport }),
+    (client) => Effect.gen(function* () {
+      const captures: Array<Capture> = []
+      for (const scenario of scenarios) {
+        yield* openNewSession(client.ui)
+        yield* resetProjectFiles(driver)
+        const startedAt = performance.now()
+        console.error(`Capturing ${scenario.id}`)
+        captures.push(...(yield* captureScenario({ ...driver, ui: client.ui }, variant, scenario, preview)))
+        metric(`capture_scenario_${scenario.id}_ms`, startedAt)
+      }
+      return captures
+    }),
+    (client) => client.close(),
+  )
+}
+
+const openNewSession = Effect.fn("Catalog.openNewSession")(function* (ui: OpenCodeDriver.Driver["ui"]) {
+  yield* ui.press("p", { ctrl: true })
+  yield* ui.waitFor("Commands", { timeout: 15_000 })
+  yield* ui.type("New session")
+  yield* ui.waitFor("New session", { timeout: 15_000 })
+  yield* ui.enter()
+  yield* ui.waitFor("Ask anything...", { timeout: 15_000 })
+})
+
+const captureBaseline = (driver: OpenCodeDriver.Driver, variant: Variant) =>
+  Effect.gen(function* () {
       const captures: Capture[] = []
-      const outputDirectory = fileURLToPath(new URL(`../public/captures/${variant.id}/`, import.meta.url))
+      const outputDirectory = join(stagingRoot, variant.id)
       yield* Effect.promise(() => mkdir(outputDirectory, { recursive: true }))
 
       const capture = Effect.fn("Catalog.capture")(function* (id: CaptureId) {
@@ -69,7 +140,7 @@ const captureBaseline = (variant: Variant) => OpenCodeDriver.use(
         const src = `captures/${variant.id}/${id}.frame.json`
         yield* Effect.promise(() =>
           Bun.write(
-            new URL(`../public/${src}`, import.meta.url),
+            join(outputDirectory, `${id}.frame.json`),
             `${JSON.stringify({ format: "opencode-terminal-frame-v1", ...frame })}\n`,
           ),
         )
@@ -198,32 +269,40 @@ const captureBaseline = (variant: Variant) => OpenCodeDriver.use(
       yield* close()
 
       return captures
-    }),
-)
+  })
 
-function captureFlow<
-  FlowId extends string,
-  States extends NonEmpty<FlowState<FlowId, CaptureId>>,
-  Error,
->(variant: Variant, flow: ExecutableFlow<FlowId, States, Error, never>) {
-  return OpenCodeDriver.use(
-    catalogScenarioRuntime({ opencode: variant.path, theme: variant.theme }),
-    (driver) => Effect.gen(function* () {
+function captureScenario(
+  driver: OpenCodeDriver.Driver,
+  variant: Variant,
+  scenario: ExecutableScenario,
+  preview = false,
+) {
+  return Effect.gen(function* () {
       const captures: Array<Capture> = []
-      yield* executeFlow(flow, {
+      yield* scenario.run({
         driver,
         capture: (state) => Effect.gen(function* () {
-          const screen = screens[state.id]
+          if (!isCaptureId(state.id)) {
+            return yield* Effect.fail(new Error(`Scenario ${scenario.id} references unknown screen ${state.id}`))
+          }
+          const id = state.id
+          const screen = screens[id]
           const frame = yield* driver.ui.capture()
-          const src = `captures/${variant.id}/${state.id}.frame.json`
-          yield* Effect.promise(() =>
-            Bun.write(
-              new URL(`../public/${src}`, import.meta.url),
+          const src = preview
+            ? `.tmp/capture-runs/${variant.id}/${id}.frame.json`
+            : `captures/${variant.id}/${id}.frame.json`
+          const output = preview
+            ? fileURLToPath(new URL(`../${src}`, import.meta.url))
+            : join(stagingRoot, variant.id, `${id}.frame.json`)
+          yield* Effect.promise(async () => {
+            await mkdir(dirname(output), { recursive: true })
+            await Bun.write(
+              output,
               `${JSON.stringify({ format: "opencode-terminal-frame-v1", ...frame })}\n`,
-            ),
-          )
+            )
+          })
           captures.push({
-            id: state.id,
+            id,
             title: screen.title,
             category: screen.category,
             frame: { variantId: variant.id, src, cols: frame.cols, rows: frame.rows },
@@ -231,8 +310,19 @@ function captureFlow<
         }),
       })
       return captures
-    }),
-  )
+  })
+}
+
+const resetProjectFiles = Effect.fn("Catalog.resetProjectFiles")(function* (driver: OpenCodeDriver.Driver) {
+  const files = join(driver.artifacts, "files")
+  yield* Effect.promise(() => Promise.all([
+    Bun.write(join(files, "fixture.txt"), "before\n"),
+    rm(join(files, "patched.txt"), { force: true }),
+  ]))
+})
+
+function isCaptureId(value: string): value is CaptureId {
+  return value in screens
 }
 
 try {
@@ -247,13 +337,29 @@ try {
       variantCaptures.filter((capture) => capture.id === first.id).map((capture) => capture.frame),
     ) as [Capture["frame"], ...Array<Capture["frame"]>],
   })) ?? []
-  const manifestFile = new URL("../public/drive-captures.json", import.meta.url)
-  const previous = await readPreviousManifest(manifestFile)
-  const captureSets = variants.map(({ path: _, ...variant }) => variant satisfies CaptureSet)
-  const manifest = mergeCaptureHistory(previous, captureSets, captures)
-  await Bun.write(manifestFile, `${JSON.stringify(manifest, undefined, 2)}\n`)
+  if (options.flow !== undefined) {
+    for (const capture of captures) {
+      for (const frame of capture.frames) console.log(frame.src)
+    }
+  } else {
+    for (const variant of variants) {
+      const target = fileURLToPath(new URL(`../public/captures/${variant.id}/`, import.meta.url))
+      await rm(target, { recursive: true, force: true })
+      await mkdir(dirname(target), { recursive: true })
+      await rename(join(stagingRoot, variant.id), target)
+    }
+    const manifestFile = new URL("../public/drive-captures.json", import.meta.url)
+    const previous = await readPreviousManifest(manifestFile)
+    const captureSets = variants.map(({ path: _, ...variant }) => variant satisfies CaptureSet)
+    const manifest = mergeCaptureHistory(previous, captureSets, captures)
+    await Bun.write(manifestFile, `${JSON.stringify(manifest, undefined, 2)}\n`)
+  }
+  captureSucceeded = true
 } finally {
-  await prepared.cleanup()
+  metric("capture_total_ms", processStartedAt)
+  if (captureSucceeded) await rm(stagingRoot, { recursive: true, force: true })
+  else console.error(`Retained staged capture frames: ${stagingRoot}`)
+  await prepared.cleanup(captureSucceeded)
 }
 
 async function prepareCaptureSets(options: ReturnType<typeof parseCaptureOptions>) {
@@ -266,11 +372,23 @@ async function prepareCaptureSets(options: ReturnType<typeof parseCaptureOptions
       const revision = await git(options.opencode, "rev-parse", `${ref}^{commit}`)
       if (revisions.has(revision)) continue
       const committedAt = await git(options.opencode, "show", "-s", "--format=%cI", revision)
-      const path = await mkdtemp(join(tmpdir(), "opencode-catalog-"))
-      await command(["git", "worktree", "add", "--detach", path, revision], options.opencode)
+      const path = fileURLToPath(new URL(`../.tmp/capture-worktrees/${revision}/`, import.meta.url))
+      const preparedRevision = await preparedWorktreeRevision(path)
+      if (options.fresh && preparedRevision !== undefined) {
+        await command(["git", "worktree", "remove", "--force", path], options.opencode)
+          .catch(() => rm(path, { recursive: true, force: true }))
+      }
+      if (options.fresh || preparedRevision !== revision) {
+        if (preparedRevision !== undefined) {
+          await command(["git", "worktree", "remove", "--force", path], options.opencode)
+            .catch(() => rm(path, { recursive: true, force: true }))
+        }
+        await mkdir(dirname(path), { recursive: true })
+        await command(["git", "worktree", "add", "--detach", path, revision], options.opencode)
+        // Bun can reuse another Git worktree's install state without creating local links.
+        await command(["bun", "install", "--frozen-lockfile", "--force"], path)
+      }
       worktrees.push(path)
-      // Bun can reuse another Git worktree's install state without creating local links.
-      await command(["bun", "install", "--frozen-lockfile", "--force"], path)
       revisions.set(revision, { ref, committedAt, path })
     }
 
@@ -295,11 +413,18 @@ async function prepareCaptureSets(options: ReturnType<typeof parseCaptureOptions
 
   return { variants, cleanup }
 
-  async function cleanup() {
-    for (const path of worktrees.reverse()) {
-      await command(["git", "worktree", "remove", "--force", path], options.opencode).catch(() => rm(path, { recursive: true, force: true }))
-    }
+  async function cleanup(_succeeded = false) {
+    for (const path of worktrees) console.error(`Prepared capture worktree: ${path}`)
   }
+}
+
+async function preparedWorktreeRevision(path: string) {
+  if (!(await Bun.file(join(path, ".git")).exists())) return undefined
+  return git(path, "rev-parse", "HEAD").catch(() => undefined)
+}
+
+function metric(name: string, startedAt: number) {
+  console.log(`METRIC ${name}=${Math.round(performance.now() - startedAt)}`)
 }
 
 async function readPreviousManifest(file: URL): Promise<DriveManifest | undefined> {

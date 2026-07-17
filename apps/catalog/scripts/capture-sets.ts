@@ -5,20 +5,29 @@ export interface CaptureOptions {
   readonly opencode: string
   readonly revisions: ReadonlyArray<string>
   readonly themes: ReadonlyArray<string | undefined>
+  readonly flow: string | undefined
+  readonly fresh: boolean
 }
 
 export function parseCaptureOptions(args: ReadonlyArray<string>, defaultOpenCode: string): CaptureOptions {
   let opencode = defaultOpenCode
   const revisions: Array<string> = []
   const themes: Array<string | undefined> = []
+  let flow: string | undefined
+  let fresh = false
 
   for (let index = 0; index < args.length; index++) {
     const argument = args[index]
+    if (argument === "--fresh") {
+      fresh = true
+      continue
+    }
     const value = args[++index]
     if (!value) throw new Error(`${argument} requires a value`)
     if (argument === "--opencode") opencode = value
     else if (argument === "--revision") revisions.push(value)
     else if (argument === "--theme") themes.push(value === "default" ? undefined : value)
+    else if (argument === "--flow") flow = value
     else throw new Error(`Unknown capture argument: ${argument}`)
   }
 
@@ -26,6 +35,8 @@ export function parseCaptureOptions(args: ReadonlyArray<string>, defaultOpenCode
     opencode: resolve(opencode),
     revisions: revisions.length === 0 ? ["origin/v2"] : revisions,
     themes: themes.length === 0 ? [undefined] : themes,
+    flow,
+    fresh,
   }
 }
 

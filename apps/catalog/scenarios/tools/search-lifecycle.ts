@@ -28,10 +28,6 @@ export const searchLifecycleFlow = defineExecutableFlow(
     description: "Run built-in glob and grep tools through distinct streaming, grouped, success, empty, and failure states.",
   },
   ({ state, program }) => {
-    const globStreaming = state("glob-streaming", {
-      screen: screen("Glob streaming", "streaming"),
-      step: { title: "Glob input streams" },
-    })
     const globSuccess = state("glob-success", {
       screen: screen("Glob finds files", "success"),
       step: { title: "Glob succeeds" },
@@ -58,7 +54,7 @@ export const searchLifecycleFlow = defineExecutableFlow(
     })
 
     return program(
-      [globStreaming, globSuccess, globEmpty, groupedExploration, grepSuccess, grepEmpty, grepFailure],
+      [globSuccess, globEmpty, groupedExploration, grepSuccess, grepEmpty, grepFailure],
       ({ driver, checkpoint }) => Effect.gen(function* () {
         yield* driver.llm.queue(
           Llm.toolCall(
@@ -67,49 +63,71 @@ export const searchLifecycleFlow = defineExecutableFlow(
           ),
           Llm.finish("tool-calls"),
         )
+        yield* driver.llm.queue(Llm.text("The first glob search is complete."))
         yield* driver.llm.queue(
           Llm.toolCall({ index: 0, id: "call_glob_empty", name: "glob", input: { pattern: "missing/**/*.rs" } }),
           Llm.finish("tool-calls"),
         )
+        yield* driver.llm.queue(Llm.text("The empty glob search is complete."))
         yield* driver.llm.queue(
           Llm.toolCall({ index: 0, id: "call_group_glob", name: "glob", input: { pattern: "**/*.ts" } }),
           Llm.toolCall({ index: 1, id: "call_group_grep", name: "grep", input: { pattern: "credits", path: "src" } }),
           Llm.finish("tool-calls"),
         )
+        yield* driver.llm.queue(Llm.text("The grouped exploration is complete."))
+        yield* driver.llm.queue(
+          Llm.toolCall({ index: 0, id: "call_grep_success", name: "grep", input: { pattern: "credits", path: "src" } }),
+          Llm.finish("tool-calls"),
+        )
+        yield* driver.llm.queue(Llm.text("The matching grep search is complete."))
         yield* driver.llm.queue(
           Llm.toolCall({ index: 0, id: "call_grep_empty", name: "grep", input: { pattern: "DEADBEEF", path: "src" } }),
           Llm.finish("tool-calls"),
         )
+        yield* driver.llm.queue(Llm.text("The empty grep search is complete."))
         yield* driver.llm.queue(
           Llm.toolCall({ index: 0, id: "call_grep_failure", name: "grep", input: { pattern: "[", path: "src" } }),
           Llm.finish("tool-calls"),
         )
+        yield* driver.llm.queue(Llm.text("The invalid grep search is complete."))
 
-        yield* driver.ui.submit("Explore the TypeScript sources, including empty and invalid searches.")
-        yield* driver.ui.waitFor("Finding files...", { timeout: 15_000 })
-        yield* checkpoint(globStreaming)
+        yield* driver.ui.submit("Find the TypeScript source files.")
         yield* driver.ui.waitFor("Permission required", { timeout: 15_000 })
         yield* driver.ui.enter()
-        yield* driver.ui.waitFor('Glob "src/**/*.ts"', { timeout: 15_000 })
+        yield* driver.ui.waitFor("The first glob search is complete.", { timeout: 15_000 })
         yield* checkpoint(globSuccess)
+
+        yield* driver.ui.submit("Find Rust files that do not exist.")
         yield* driver.ui.waitFor("Permission required", { timeout: 15_000 })
         yield* driver.ui.enter()
-        yield* driver.ui.waitFor('Glob "missing/**/*.rs"', { timeout: 15_000 })
+        yield* driver.ui.waitFor("The empty glob search is complete.", { timeout: 15_000 })
         yield* checkpoint(globEmpty)
+
+        yield* driver.ui.submit("Explore TypeScript files and search them for credits together.")
         yield* driver.ui.waitFor("Permission required", { timeout: 15_000 })
         yield* driver.ui.enter()
+        yield* Effect.sleep(500)
         yield* driver.ui.waitFor("Permission required", { timeout: 15_000 })
         yield* driver.ui.enter()
-        yield* driver.ui.waitFor('Grep "credits"', { timeout: 15_000 })
+        yield* driver.ui.waitFor("The grouped exploration is complete.", { timeout: 15_000 })
         yield* checkpoint(groupedExploration)
+
+        yield* driver.ui.submit("Search the source directory for credits.")
+        yield* driver.ui.waitFor("Permission required", { timeout: 15_000 })
+        yield* driver.ui.enter()
+        yield* driver.ui.waitFor("The matching grep search is complete.", { timeout: 15_000 })
         yield* checkpoint(grepSuccess)
+
+        yield* driver.ui.submit("Search the source directory for DEADBEEF.")
         yield* driver.ui.waitFor("Permission required", { timeout: 15_000 })
         yield* driver.ui.enter()
-        yield* driver.ui.waitFor('Grep "DEADBEEF"', { timeout: 15_000 })
+        yield* driver.ui.waitFor("The empty grep search is complete.", { timeout: 15_000 })
         yield* checkpoint(grepEmpty)
+
+        yield* driver.ui.submit("Run an invalid regular expression search.")
         yield* driver.ui.waitFor("Permission required", { timeout: 15_000 })
         yield* driver.ui.enter()
-        yield* driver.ui.waitFor("regex", { timeout: 15_000 })
+        yield* driver.ui.waitFor("The invalid grep search is complete.", { timeout: 15_000 })
         yield* checkpoint(grepFailure)
       }),
     )

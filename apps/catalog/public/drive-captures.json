@@ -7,7 +7,7 @@
       "label": "5d5b33f",
       "source": "opencode-v2-latest",
       "revision": "5d5b33f195cc664d376ea85503f49433a05a3049",
-      "ref": "origin/v2",
+      "ref": "5d5b33f195cc664d376ea85503f49433a05a3049",
       "committedAt": "2026-07-17T19:04:40+02:00"
     },
     {
@@ -664,6 +664,344 @@
         {
           "variantId": "5d5b33f195cc",
           "src": "captures/5d5b33f195cc/shell-execute-failed.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "glob-success",
+      "title": "Glob finds files",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/glob-success.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "glob-empty",
+      "title": "Glob finds no files",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/glob-empty.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "grouped-exploration",
+      "title": "Grouped project exploration",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/grouped-exploration.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "grep-success",
+      "title": "Grep finds matches",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/grep-success.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "grep-empty",
+      "title": "Grep finds no matches",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/grep-empty.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "grep-failure",
+      "title": "Grep pattern fails",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/grep-failure.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "webfetch-streaming",
+      "title": "WebFetch streaming",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/webfetch-streaming.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "webfetch-success",
+      "title": "WebFetch succeeds",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/webfetch-success.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "websearch-running",
+      "title": "WebSearch running",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/websearch-running.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "websearch-failure",
+      "title": "WebSearch fails",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/websearch-failure.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "question-input-streaming",
+      "title": "Question input streaming",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/question-input-streaming.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "question-awaiting-form",
+      "title": "Question awaiting form",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/question-awaiting-form.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "question-review",
+      "title": "Question review",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/question-review.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "question-succeeded",
+      "title": "Question succeeded",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/question-succeeded.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "question-denied",
+      "title": "Question denied",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/question-denied.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "patch-created",
+      "title": "Patch created file",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/patch-created.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "patch-updated",
+      "title": "Patch updated file",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/patch-updated.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "patch-deleted",
+      "title": "Patch deleted file",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/patch-deleted.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "patch-failed",
+      "title": "Patch failed",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/patch-failed.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "assistant-response-succeeded",
+      "title": "Assistant response succeeded",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/assistant-response-succeeded.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "assistant-response-failed",
+      "title": "Assistant response failed",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/assistant-response-failed.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "assistant-response-interrupted",
+      "title": "Assistant response interrupted",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/assistant-response-interrupted.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "read-input-streaming",
+      "title": "Read input streaming",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/read-input-streaming.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "read-permission",
+      "title": "Read permission",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/read-permission.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "read-succeeded",
+      "title": "Read succeeded",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/read-succeeded.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "read-denied",
+      "title": "Read denied",
+      "category": "session",
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/read-denied.frame.json",
           "cols": 118,
           "rows": 34
         }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { executableFlows, executableStates } from "../scenarios"
+import { executableFlows, executableScenarios, executableStates } from "../scenarios"
 import { catalogScenarioRuntime, catalogViewport } from "../scenarios/runtime"
 import { shellLifecycleFlow } from "../scenarios/tools/shell-lifecycle"
 import { subagentLifecycleFlow } from "../scenarios/subagents/subagent-lifecycle"
@@ -27,11 +27,26 @@ describe("catalog lifecycle scenarios", () => {
   })
 
   test("authors screens and replayable flows from executable scenarios", () => {
-    for (const flow of [shellLifecycleFlow, subagentLifecycleFlow]) {
-      for (const state of flow.states) expect(screens[state.id]).toBe(state.metadata.screen)
+    const authored = Object.values(flowGroups).flatMap((group) => Object.entries(group.flows))
+    for (const scenario of executableScenarios) {
+      for (const state of scenario.states) {
+        const authoredScreen = Object.entries(screens).find(([id]) => id === state.id)?.[1]
+        expect(authoredScreen === state.metadata.screen).toBe(true)
+      }
+      expect(authored.find(([id]) => id === scenario.id)?.[1].replayable).toBe(true)
     }
     expect(flowGroups["tool-use"].flows["shell-lifecycle"].replayable).toBe(true)
     expect(flowGroups.subagents.flows["subagent-lifecycle"].replayable).toBe(true)
+  })
+
+  test("declares the one dynamic response-mode scenario", () => {
+    expect(executableScenarios.filter((scenario) => scenario.llmMode === "serve").map((scenario) => scenario.id))
+      .toEqual(["subagent-lifecycle"])
+  })
+
+  test("isolates scenarios that cannot safely reset their TUI client", () => {
+    expect(executableScenarios.filter((scenario) => scenario.clientIsolation === "isolated").map((scenario) => scenario.id))
+      .toEqual(["assistant-lifecycle", "read-file-lifecycle"])
   })
 
   test("builds the shared capture and reproduce driver runtime", () => {

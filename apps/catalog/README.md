@@ -4,7 +4,7 @@ Production: <https://catalog.kitlangton.dev>
 
 Capture a reproducible catalog of OpenCode terminal states from local checkouts, browse every state in one web app, and flip between themes or branches without changing the selected screen.
 
-The catalog currently contains 23 scripted states covering the home screen, command and model pickers, integrations, themes, MCPs, permissions, questions, sessions, subagents, shell output, toasts, and the diff viewer.
+The catalog currently contains 57 scripted states covering navigation, sessions, assistant responses, questions, subagents, shell, file patches, reads, project search, web tools, permissions, toasts, and review surfaces.
 
 ## Prerequisites
 
@@ -36,6 +36,19 @@ bun run dev
 Open the URL printed by `bun run dev`.
 
 Each revision is resolved to an immutable commit and captured from an isolated detached worktree. Set IDs are derived from the commit SHA, prior sets remain in the manifest, and rerunning the same commit/theme replaces only that set. Sets are ordered by commit time, so the newest commit is selected when the catalog opens.
+
+Prepared revision worktrees are cached under `.tmp/capture-worktrees`. Warm captures reuse the exact resolved commit and its installed dependencies; pass `--fresh` to deliberately rebuild the prepared checkout. Full capture groups scenarios by their declared LLM response mode and reuses one OpenCode process within each group. Frames are staged under `.tmp` and replace the revision directory only after every scenario succeeds.
+
+During scenario development, execute one registered flow without changing the authoritative manifest:
+
+```bash
+bun run capture -- \
+  --opencode $HOME/code/opencode \
+  --revision v2 \
+  --flow search-lifecycle
+```
+
+Preview frames are written under `.tmp/capture-runs`. The scenario registry in `scenarios/index.ts` is authoritative for capture, canonical replay addresses, authored screens, and replayable flow metadata.
 
 When `--revision` is omitted, capture resolves `origin/v2`; it never trusts the checkout's current `HEAD`, which may be a stale feature branch.
 

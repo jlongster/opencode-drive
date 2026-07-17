@@ -35,7 +35,7 @@ export function catalogScenarioRuntime(options: {
       tools.handle("shell", ({ input, progress }) =>
         Effect.gen(function* () {
           yield* progress(`streamed output: ${input.command}\n`)
-          yield* Effect.sleep(900)
+          yield* Effect.sleep(1_500)
           if (input.command.includes("fail")) {
             return yield* new Tool.Failure({ message: "catalog shell failure" })
           }

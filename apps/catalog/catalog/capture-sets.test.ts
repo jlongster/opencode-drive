@@ -29,11 +29,20 @@ describe("capture revision sets", () => {
       opencode: `${process.cwd()}/opencode`,
       revisions: ["v2~1", "v2"],
       themes: ["opencode", "rosepine"],
+      flow: undefined,
+      fresh: false,
     })
   })
 
   test("defaults to the canonical v2 branch instead of a stale checkout HEAD", () => {
     expect(parseCaptureOptions([], "/opencode").revisions).toEqual(["origin/v2"])
+  })
+
+  test("selects one flow and deliberately refreshes its prepared worktree", () => {
+    expect(parseCaptureOptions(["--flow", "search-lifecycle", "--fresh"], "/opencode")).toMatchObject({
+      flow: "search-lifecycle",
+      fresh: true,
+    })
   })
 
   test("derives immutable commit and theme IDs", () => {

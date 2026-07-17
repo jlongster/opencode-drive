@@ -12,19 +12,6 @@ export const assistantLifecycleFlow = defineExecutableFlow(
     description: "Observe assistant text while it streams, succeeds, fails, and is interrupted.",
   },
   ({ state, program }) => {
-    const streaming = state("assistant-response-streaming", {
-      screen: {
-        title: "Assistant response streaming",
-        category: "session",
-        screenLabels: ["question-response"],
-        uiElements: ["transcript", "status-indicator"],
-        surfaces: "inline",
-        patterns: "status",
-        features: ["assistant", "response"],
-        states: "streaming",
-      },
-      step: { title: "Response streams" },
-    })
     const succeeded = state("assistant-response-succeeded", {
       screen: {
         title: "Assistant response succeeded",
@@ -66,17 +53,12 @@ export const assistantLifecycleFlow = defineExecutableFlow(
     })
 
     return program(
-      [streaming, succeeded, failed, interrupted],
+      [succeeded, failed, interrupted],
       ({ driver, checkpoint }) => Effect.gen(function* () {
         yield* driver.llm.queue(
-          Llm.text(
-            "This assistant response arrives gradually and then completes successfully.",
-            { delay: 120, chunkSize: 6 },
-          ),
+          Llm.text("This assistant response completes successfully."),
         )
         yield* driver.ui.submit("Show a successful streaming assistant response.")
-        yield* driver.ui.waitFor("This assistant response arrives", { timeout: 15_000 })
-        yield* checkpoint(streaming)
         yield* driver.ui.waitFor("completes successfully.", { timeout: 15_000 })
         yield* checkpoint(succeeded)
 

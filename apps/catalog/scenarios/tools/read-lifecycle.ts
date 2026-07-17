@@ -22,16 +22,15 @@ export const readLifecycleFlow = defineExecutableFlow(
     id: "read-file-lifecycle",
     title: "Read file lifecycle",
     group: { id: "tool-use", label: "Tool use" },
-    description: "Stream a read call, approve it, then observe success, failure, and denial.",
+    description: "Stream a read call, approve it, then observe success and denial.",
   },
   ({ state, program }) => {
     const input = state("read-input-streaming", { screen: screen("Read input streaming", "streaming"), step: { title: "Input streams" } })
     const permission = state("read-permission", { screen: screen("Read permission", "confirmation"), step: { title: "Permission is requested" } })
     const succeeded = state("read-succeeded", { screen: screen("Read succeeded", "success"), step: { title: "Read succeeds" } })
-    const failed = state("read-failed", { screen: screen("Read failed", "error"), step: { title: "Read fails" } })
     const denied = state("read-denied", { screen: screen("Read denied", "error"), step: { title: "Read is denied" } })
 
-    return program([input, permission, succeeded, failed, denied], ({ driver, checkpoint }) => Effect.gen(function* () {
+    return program([input, permission, succeeded, denied], ({ driver, checkpoint }) => Effect.gen(function* () {
       yield* driver.llm.queue(
         Llm.toolCall({ index: 0, id: "call_read_success", name: "read", input: { path: "fixture.txt" } }, { delay: 100, chunkSize: 4 }),
         Llm.finish("tool-calls"),
@@ -51,7 +50,6 @@ export const readLifecycleFlow = defineExecutableFlow(
       yield* Effect.sleep(300)
       yield* checkpoint(succeeded)
       yield* driver.ui.waitFor("The missing-file read failed as expected.", { timeout: 15_000 })
-      yield* checkpoint(failed)
       yield* driver.llm.queue(
         Llm.toolCall({ index: 0, id: "call_read_denied", name: "read", input: { path: "src/ledger.ts" } }),
         Llm.finish("tool-calls"),

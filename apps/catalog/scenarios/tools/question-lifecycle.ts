@@ -57,19 +57,6 @@ export const questionLifecycleFlow = defineExecutableFlow(
       },
       step: { title: "Question awaits an answer" },
     })
-    const selected = state("question-option-selected", {
-      screen: {
-        title: "Question option selected",
-        category: "session",
-        screenLabels: ["tool-execution", "question-response"],
-        uiElements: ["question-prompt", "button-group", "picker"],
-        surfaces: "inline",
-        patterns: "form",
-        features: ["tool", "question"],
-        states: "populated",
-      },
-      step: { title: "Options are selected" },
-    })
     const review = state("question-review", {
       screen: {
         title: "Question review",
@@ -111,7 +98,7 @@ export const questionLifecycleFlow = defineExecutableFlow(
     })
 
     return program(
-      [inputStreaming, awaiting, selected, review, succeeded, denied],
+      [inputStreaming, awaiting, review, succeeded, denied],
       ({ driver, checkpoint }) => Effect.gen(function* () {
         yield* driver.llm.queue(
           Llm.toolCall(
@@ -130,7 +117,6 @@ export const questionLifecycleFlow = defineExecutableFlow(
         yield* checkpoint(awaiting)
         yield* driver.ui.enter()
         yield* driver.ui.enter()
-        yield* checkpoint(selected)
         yield* driver.ui.waitFor("Review", { timeout: 5_000 })
         yield* checkpoint(review)
         yield* driver.ui.enter()
