@@ -11,6 +11,7 @@ import { CommandPalette } from "./components/CommandPalette"
 import { ContactSheet } from "./components/ContactSheet"
 import { FlowBrowser } from "./components/FlowBrowser"
 import { Header } from "./components/Header"
+import { MatrixNavigation } from "./components/MatrixNavigation"
 import { SelectionBar } from "./components/SelectionBar"
 import { Viewer } from "./components/Viewer"
 
@@ -230,7 +231,7 @@ export function App({ catalog }: AppProps) {
       target instanceof HTMLTextAreaElement ||
       (target instanceof HTMLElement && target.isContentEditable)
     if (editing) return
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+    if (event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       event.preventDefault()
       navigateVariant(event.key === "ArrowUp" ? -1 : 1)
       return
@@ -282,14 +283,22 @@ export function App({ catalog }: AppProps) {
           onVariantSelect={(id) => setVariantIndex(Math.max(0, catalog.variants.findIndex((variant) => variant.id === id)))}
         />
         {ui.mode !== "flows" ? (
-          <SelectionBar
-            taxonomy={taxonomy}
-            taxonomyValues={taxonomyValues}
-            facets={ui.facets}
-            onTaxonomy={(value) => dispatch({ type: "toggle-taxonomy", taxonomy: taxonomyType, value })}
-            onFacet={(facet, value) => dispatch({ type: "toggle-facet", facet, value })}
-            onClear={() => dispatch({ type: "reset-view" })}
-          />
+          <>
+            <SelectionBar
+              taxonomy={taxonomy}
+              taxonomyValues={taxonomyValues}
+              facets={ui.facets}
+              onTaxonomy={(value) => dispatch({ type: "toggle-taxonomy", taxonomy: taxonomyType, value })}
+              onFacet={(facet, value) => dispatch({ type: "toggle-facet", facet, value })}
+              onClear={() => dispatch({ type: "reset-view" })}
+            />
+            <MatrixNavigation
+              screens={screens}
+              states={catalog.states}
+              selectedStates={ui.facets.state}
+              onState={(value) => dispatch({ type: "toggle-facet", facet: "state", value })}
+            />
+          </>
         ) : undefined}
         {ui.mode === "flows" ? (
           <FlowBrowser
