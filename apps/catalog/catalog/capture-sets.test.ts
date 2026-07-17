@@ -32,6 +32,10 @@ describe("capture revision sets", () => {
     })
   })
 
+  test("defaults to the canonical v2 branch instead of a stale checkout HEAD", () => {
+    expect(parseCaptureOptions([], "/opencode").revisions).toEqual(["origin/v2"])
+  })
+
   test("derives immutable commit and theme IDs", () => {
     expect(captureSetId("ABCDEF1234567890", undefined)).toBe("abcdef123456")
     expect(captureSetId("ABCDEF1234567890", "One Dark")).toBe("abcdef123456-one-dark")

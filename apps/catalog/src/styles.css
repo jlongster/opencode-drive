@@ -831,6 +831,26 @@ kbd {
   scroll-snap-align: start;
 }
 
+.flow-step-unavailable {
+  min-height: 8rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: center;
+  padding: 1rem;
+  border: 1px dashed var(--kit-line-strong);
+  color: var(--kit-fg-faint);
+  font-family: var(--kit-mono);
+  font-size: 0.62rem;
+}
+
+.flow-step-unavailable strong {
+  color: var(--kit-fg-muted);
+  font-weight: 500;
+}
+
+.flow-step-unavailable small {
+  grid-column: 2;
+}
+
 .flow-open {
   display: block;
   width: 100%;

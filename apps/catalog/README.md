@@ -37,6 +37,8 @@ Open the URL printed by `bun run dev`.
 
 Each revision is resolved to an immutable commit and captured from an isolated detached worktree. Set IDs are derived from the commit SHA, prior sets remain in the manifest, and rerunning the same commit/theme replaces only that set. Sets are ordered by commit time, so the newest commit is selected when the catalog opens.
 
+When `--revision` is omitted, capture resolves `origin/v2`; it never trusts the checkout's current `HEAD`, which may be a stale feature branch.
+
 ## Compare Themes
 
 Variants can use the same OpenCode checkout with different configured themes:
@@ -86,6 +88,17 @@ bun run capture -- \
 bun run generate
 bun run dev
 ```
+
+The common local feature-branch comparison is:
+
+```bash
+bun run capture -- \
+  --opencode /path/to/opencode \
+  --revision origin/v2 \
+  --revision HEAD
+```
+
+Commit local changes first: capture sets intentionally resolve Git commits and exclude an uncommitted working tree. In the catalog, `origin/v2` is the before set and `HEAD` is the after set; use the picker or up/down without losing the selected state.
 
 Themes and checkout comparisons can be combined:
 

@@ -141,13 +141,12 @@ function collectIssues(definition: CatalogDefinition, manifest: DriveManifest): 
 
   for (const capture of manifest.captures) {
     const frameVariantIds = capture.frames.map((frame) => frame.variantId)
-    const frameVariantIdSet = new Set(frameVariantIds)
     duplicateIssues(frameVariantIds, `drive-captures.json.captures.${capture.id}.frames`, issues)
-    for (const variantId of variantIds) {
-      if (!frameVariantIdSet.has(variantId)) {
+    for (const variantId of frameVariantIds) {
+      if (!variantIds.includes(variantId)) {
         issues.push({
           path: `drive-captures.json.captures.${capture.id}.frames`,
-          message: `Capture ${capture.id} has no frame for variant ${variantId}`,
+          message: `Capture ${capture.id} references unknown variant ${variantId}`,
         })
       }
     }

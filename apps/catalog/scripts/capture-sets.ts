@@ -24,7 +24,7 @@ export function parseCaptureOptions(args: ReadonlyArray<string>, defaultOpenCode
 
   return {
     opencode: resolve(opencode),
-    revisions: revisions.length === 0 ? ["HEAD"] : revisions,
+    revisions: revisions.length === 0 ? ["origin/v2"] : revisions,
     themes: themes.length === 0 ? [undefined] : themes,
   }
 }

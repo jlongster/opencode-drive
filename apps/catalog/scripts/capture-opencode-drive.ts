@@ -269,7 +269,8 @@ async function prepareCaptureSets(options: ReturnType<typeof parseCaptureOptions
       const path = await mkdtemp(join(tmpdir(), "opencode-catalog-"))
       await command(["git", "worktree", "add", "--detach", path, revision], options.opencode)
       worktrees.push(path)
-      await command(["bun", "install", "--frozen-lockfile"], path)
+      // Bun can reuse another Git worktree's install state without creating local links.
+      await command(["bun", "install", "--frozen-lockfile", "--force"], path)
       revisions.set(revision, { ref, committedAt, path })
     }
 
