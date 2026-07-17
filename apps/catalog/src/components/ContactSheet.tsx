@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useRef } from "react"
 import type { BrowseMode, Screen, TaxonomyGroup } from "../catalog"
 import { frameFor, taxonomyLabel } from "../catalog"
+import { CopyIdButton } from "./CopyIdButton"
 import { TerminalFrame } from "./TerminalFrame"
 
 interface ContactSheetProps {
@@ -81,31 +82,36 @@ export function ContactSheet({
           const values = mode === "screens" ? screen.screenLabels : screen.uiElements
           const frame = frameFor(screen, variantId)
           return (
-            <button
+            <article
               key={screen.id}
-              type="button"
-              data-screen={screen.id}
               className={`capture-card${screen.id === selectedId ? " selected" : ""}`}
-              tabIndex={screen.id === selectedId ? 0 : -1}
-              aria-label={`Open ${screen.title}`}
-              onClick={() => onOpen(screen.id)}
-              onFocus={() => {
-                if (screen.id !== selectedId) onSelect(screen.id)
-              }}
             >
-              <span className="capture-frame">
-                <TerminalFrame frame={frame} label={screen.title} lazy />
-              </span>
-              <span className="capture-caption">
-                <span className="capture-title">{screen.title}</span>
-                <span className="capture-labels">
-                  {values.slice(0, 3).map((value) => (
-                    <span key={value}>{taxonomyLabel(taxonomy, value)}</span>
-                  ))}
-                  {values.length > 3 ? <span>+{values.length - 3}</span> : undefined}
+              <button
+                type="button"
+                data-screen={screen.id}
+                className="capture-open"
+                tabIndex={screen.id === selectedId ? 0 : -1}
+                aria-label={`Open ${screen.title}`}
+                onClick={() => onOpen(screen.id)}
+                onFocus={() => {
+                  if (screen.id !== selectedId) onSelect(screen.id)
+                }}
+              >
+                <span className="capture-frame">
+                  <TerminalFrame frame={frame} label={screen.title} lazy />
                 </span>
-              </span>
-            </button>
+                <span className="capture-caption">
+                  <span className="capture-title">{screen.title}</span>
+                  <span className="capture-labels">
+                    {values.slice(0, 3).map((value) => (
+                      <span key={value}>{taxonomyLabel(taxonomy, value)}</span>
+                    ))}
+                    {values.length > 3 ? <span>+{values.length - 3}</span> : undefined}
+                  </span>
+                </span>
+              </button>
+              <CopyIdButton identifier={screen.id} />
+            </article>
           )
         })
       )}

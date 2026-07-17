@@ -1,5 +1,6 @@
 import type { Catalog, Flow } from "../catalog"
 import { frameFor } from "../catalog"
+import { CopyIdButton } from "./CopyIdButton"
 import { TerminalFrame } from "./TerminalFrame"
 
 interface FlowBrowserProps {
@@ -76,7 +77,7 @@ export function FlowBrowser({ catalog, flows, activeFlow, variantId, onFlow, onO
             const frame = frameFor(screen, variantId)
             return (
               <li key={`${activeFlow.id}:${index}:${step.screenId}`} className="flow-step">
-                <button type="button" onClick={() => onOpen(screen.id)}>
+                <button type="button" className="flow-open" onClick={() => onOpen(screen.id)}>
                   <span className="flow-frame">
                     <TerminalFrame frame={frame} label={screen.title} lazy />
                   </span>
@@ -88,6 +89,7 @@ export function FlowBrowser({ catalog, flows, activeFlow, variantId, onFlow, onO
                     </span>
                   </span>
                 </button>
+                <CopyIdButton identifier={`${activeFlow.id}/${screen.id}`} />
               </li>
             )
           })}
