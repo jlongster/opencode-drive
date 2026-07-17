@@ -3,6 +3,10 @@ import { screensFromFlow } from "../flow"
 import { patchSuccessFlow } from "../../scenarios/tools/patch-success"
 import { shellLifecycleFlow } from "../../scenarios/tools/shell-lifecycle"
 import { subagentLifecycleFlow } from "../../scenarios/subagents/subagent-lifecycle"
+import { searchLifecycleFlow } from "../../scenarios/tools/search-lifecycle"
+import { webLifecycleFlow } from "../../scenarios/tools/web-lifecycle"
+import { assistantLifecycleFlow } from "../../scenarios/responses/assistant-lifecycle"
+import { questionLifecycleFlow } from "../../scenarios/tools/question-lifecycle"
 import { taxonomies } from "./taxonomies"
 
 export const screens = defineScreens(taxonomies, {
@@ -139,6 +143,10 @@ export const screens = defineScreens(taxonomies, {
   ...screensFromFlow(patchSuccessFlow),
   ...screensFromFlow(shellLifecycleFlow),
   ...screensFromFlow(subagentLifecycleFlow),
+  ...screensFromFlow(searchLifecycleFlow),
+  ...screensFromFlow(webLifecycleFlow),
+  ...screensFromFlow(assistantLifecycleFlow),
+  ...screensFromFlow(questionLifecycleFlow),
   "session-rename": {
     title: "Rename session",
     category: "session",

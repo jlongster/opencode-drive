@@ -5,13 +5,29 @@ import { executeFlow, type ExecutableFlow, type FlowState } from "../catalog/flo
 import { patchSuccessFlow } from "./tools/patch-success"
 import { shellLifecycleFlow } from "./tools/shell-lifecycle"
 import { subagentLifecycleFlow } from "./subagents/subagent-lifecycle"
+import { searchLifecycleFlow } from "./tools/search-lifecycle"
+import { webLifecycleFlow } from "./tools/web-lifecycle"
+import { assistantLifecycleFlow } from "./responses/assistant-lifecycle"
+import { questionLifecycleFlow } from "./tools/question-lifecycle"
 
-export const executableFlows = [patchSuccessFlow, shellLifecycleFlow, subagentLifecycleFlow] as const
+export const executableFlows = [
+  patchSuccessFlow,
+  shellLifecycleFlow,
+  subagentLifecycleFlow,
+  searchLifecycleFlow,
+  webLifecycleFlow,
+  assistantLifecycleFlow,
+  questionLifecycleFlow,
+] as const
 
 export const executableStates = [
   ...statesFromFlow(patchSuccessFlow),
   ...statesFromFlow(shellLifecycleFlow),
   ...statesFromFlow(subagentLifecycleFlow),
+  ...statesFromFlow(searchLifecycleFlow),
+  ...statesFromFlow(webLifecycleFlow),
+  ...statesFromFlow(assistantLifecycleFlow),
+  ...statesFromFlow(questionLifecycleFlow),
 ] as const
 
 function statesFromFlow<
