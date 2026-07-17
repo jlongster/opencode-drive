@@ -35,6 +35,7 @@ export class UiTimeoutError extends Schema.TaggedErrorClass<UiTimeoutError>()(
     operation: Schema.String,
     milliseconds: Schema.Number,
     message: Schema.String,
+    frame: Schema.optionalKey(Frontend.CapturedFrame),
   },
 ) {}
 
@@ -123,6 +124,7 @@ export interface Ui {
 
 export const make = (connection: UiConnection, options?: Options): Ui => {
   const requestTimeout = RequestTimeout.make(options?.requestTimeout ?? 30_000)
+  const evidenceTimeout = Math.min(requestTimeout, 1_000)
   const { rpc } = connection
   const call = <A, E>(
     operation: string,
@@ -184,6 +186,29 @@ export const make = (connection: UiConnection, options?: Options): Ui => {
     return yield* enter()
   })
 
+  const pollingTimeout = (
+    operation: string,
+    milliseconds: number,
+    message: string,
+  ) =>
+    rpc["ui.capture"]().pipe(
+      Effect.timeoutOrElse({
+        duration: evidenceTimeout,
+        orElse: () => Effect.succeed(undefined),
+      }),
+      Effect.catchCause(() => Effect.succeed(undefined)),
+      Effect.flatMap((frame) =>
+        Effect.fail(
+          new UiTimeoutError({
+            operation,
+            milliseconds,
+            message,
+            ...(frame === undefined ? {} : { frame }),
+          }),
+        ),
+      ),
+    )
+
   const poll = <A, E>(
     operation: string,
     read: Effect.Effect<A | undefined, E>,
@@ -220,14 +245,7 @@ export const make = (connection: UiConnection, options?: Options): Ui => {
       }).pipe(
         Effect.timeoutOrElse({
           duration: timeout,
-          orElse: () =>
-            Effect.fail(
-              new UiTimeoutError({
-                operation,
-                milliseconds: timeout,
-                message,
-              }),
-            ),
+          orElse: () => pollingTimeout(operation, timeout, message),
         }),
       )
     })

@@ -2,4 +2,4 @@
 "opencode-drive": patch
 ---
 
-Keep the managed driver Effect fully provided when consumed from TypeScript workspace applications.
+Preserve the managed driver's `Scope.Scope` requirement when consumed from TypeScript workspace applications.

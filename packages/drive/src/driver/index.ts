@@ -1,6 +1,8 @@
 import * as Effect from "effect/Effect"
 import * as Cause from "effect/Cause"
 import * as Exit from "effect/Exit"
+import * as Layer from "effect/Layer"
+import type * as Scope from "effect/Scope"
 import { NodeServices } from "@effect/platform-node"
 import * as OpenCodeInstance from "../instance/runtime.js"
 import * as SimulationConnector from "../simulation/connector.js"
@@ -114,23 +116,18 @@ const makeWithServices = Effect.fn("OpenCodeDriver.makeWithServices")(
 )
 
 type MakeWithServices = ReturnType<typeof makeWithServices>
+const layer = Layer.merge(SimulationConnector.layer, NodeServices.layer)
 
 const makeManaged = (
   options: Options = {},
 ): Effect.Effect<
   Effect.Success<MakeWithServices>,
-  Effect.Error<MakeWithServices>
-> => {
-  const managed = makeWithServices(options).pipe(
-    Effect.provide([SimulationConnector.layer, NodeServices.layer]),
+  Effect.Error<MakeWithServices>,
+  Scope.Scope
+> =>
+  makeWithServices(options).pipe(
+    Effect.provide(layer),
   )
-  // NodeServices.layer currently exposes an `any` input requirement even though
-  // it and SimulationConnector.layer fully provide this module's dependencies.
-  return managed as Effect.Effect<
-    Effect.Success<MakeWithServices>,
-    Effect.Error<MakeWithServices>
-  >
-}
 
 export const make = (options: Options = {}) =>
   makeManaged(options).pipe(Effect.map(({ driver }) => driver))

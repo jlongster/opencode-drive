@@ -22,14 +22,15 @@ const state = {
   elements: [editor],
 }
 
+const frame = {
+  cols: 2,
+  rows: 1,
+  cursor: [0, 0] as const,
+  lines: [{ spans: [{ text: "ok", fg: [255, 255, 255, 255] as const, bg: [0, 0, 0, 255] as const, attributes: 0, width: 2 }] }],
+}
+
 describe("OpenCodeUi", () => {
   it.live("captures a normalized terminal frame", () => {
-    const frame = {
-      cols: 2,
-      rows: 1,
-      cursor: [0, 0] as const,
-      lines: [{ spans: [{ text: "ok", fg: [255, 255, 255, 255] as const, bg: [0, 0, 0, 255] as const, attributes: 0, width: 2 }] }],
-    }
     const peer = startTransportPeer(({ request, socket }) => sendResult(socket, request, frame))
 
     return Effect.gen(function* () {
@@ -137,6 +138,10 @@ describe("OpenCodeUi", () => {
   it.live("interrupts timed-out polling and remains usable", () => {
     const peer = startTransportPeer(({ request, socket }) => {
       if (request.method === "ui.matches") return
+      if (request.method === "ui.capture") {
+        sendResult(socket, request, frame)
+        return
+      }
       sendResult(socket, request, state)
     })
 
@@ -150,6 +155,7 @@ describe("OpenCodeUi", () => {
       expect(error).toMatchObject({
         operation: "waitFor",
         milliseconds: 20,
+        frame,
       })
       expect(yield* ui.state()).toEqual(state)
       expect(peer.received.map(({ request }) => request)).toEqual([
@@ -159,7 +165,40 @@ describe("OpenCodeUi", () => {
           method: "ui.matches",
           params: { text: "never" },
         },
-        { jsonrpc: "2.0", id: 2, method: "ui.state" },
+        { jsonrpc: "2.0", id: 2, method: "ui.capture" },
+        { jsonrpc: "2.0", id: 3, method: "ui.state" },
+      ])
+    })
+  })
+
+  it.live("preserves the polling timeout when evidence capture fails", () => {
+    const peer = startTransportPeer(({ request, socket }) => {
+      if (request.method === "ui.matches") return
+      sendError(socket, request, "capture failed")
+    })
+
+    return Effect.gen(function* () {
+      yield* Effect.addFinalizer(() => Effect.promise(() => peer.stop()))
+      const connection = yield* SimulationConnector.ui(peer.url)
+      const error = yield* OpenCodeUi.make(connection)
+        .waitFor("never", { timeout: 20, interval: 100 })
+        .pipe(Effect.flip)
+
+      expect(error).toBeInstanceOf(OpenCodeUi.UiTimeoutError)
+      expect(error).toMatchObject({
+        operation: "waitFor",
+        milliseconds: 20,
+        message: 'timed out waiting for the UI to match "never"',
+      })
+      expect(error).not.toHaveProperty("frame")
+      expect(peer.received.map(({ request }) => request)).toEqual([
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "ui.matches",
+          params: { text: "never" },
+        },
+        { jsonrpc: "2.0", id: 2, method: "ui.capture" },
       ])
     })
   })
