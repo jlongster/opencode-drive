@@ -464,6 +464,13 @@ kbd {
   gap: 0.65rem;
   min-width: 0;
   width: 100%;
+}
+
+.capture-open {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  width: 100%;
   background: transparent;
   text-align: left;
 }
@@ -515,7 +522,7 @@ kbd {
   font-size: 0.52rem;
 }
 
-.capture-card:focus-visible {
+.capture-open:focus-visible {
   outline: 0;
 }
 
@@ -559,9 +566,24 @@ kbd {
   white-space: nowrap;
 }
 
-.capture-card:hover .capture-title,
+.capture-open:hover .capture-title,
 .capture-card.selected .capture-title,
-.capture-card:focus-visible .capture-title {
+.capture-open:focus-visible .capture-title {
+  color: var(--kit-fg-strong);
+}
+
+.copy-id-action {
+  width: fit-content;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--kit-line);
+  color: var(--kit-fg-faint);
+  font-family: var(--kit-mono);
+  font-size: 0.56rem;
+}
+
+.copy-id-action:hover,
+.copy-id-action:focus-visible {
+  border-color: var(--catalog-frame-line-strong);
   color: var(--kit-fg-strong);
 }
 
@@ -739,11 +761,13 @@ kbd {
 }
 
 .flow-step {
+  display: grid;
   min-width: 0;
+  gap: 0.75rem;
   scroll-snap-align: start;
 }
 
-.flow-step button {
+.flow-open {
   display: grid;
   width: 100%;
   gap: 0.85rem;
@@ -756,16 +780,16 @@ kbd {
   outline-offset: -1px;
 }
 
-.flow-step button:hover .flow-frame,
-.flow-step button:focus-visible .flow-frame {
+.flow-open:hover .flow-frame,
+.flow-open:focus-visible .flow-frame {
   outline-color: var(--catalog-frame-line-strong);
 }
 
-.flow-step button:focus-visible {
+.flow-open:focus-visible {
   outline: 0;
 }
 
-.flow-step button:focus-visible .flow-frame {
+.flow-open:focus-visible .flow-frame {
   outline: 1px solid var(--catalog-accent);
   outline-offset: 0.3rem;
 }

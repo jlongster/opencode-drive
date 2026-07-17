@@ -1,6 +1,7 @@
-import { useEffect, useEffectEvent, useRef, useState } from "react"
+import { useEffect, useEffectEvent, useRef } from "react"
 import type { Facet, Filter, Screen, Taxonomy, TaxonomyGroup, Variant } from "../catalog"
 import { facetValues, frameFor, label, taxonomyLabel } from "../catalog"
+import { CopyIdButton } from "./CopyIdButton"
 import { TerminalFrame } from "./TerminalFrame"
 
 interface ViewerProps {
@@ -41,17 +42,7 @@ export function Viewer({
   onTaxonomy,
 }: ViewerProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
-  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle")
   const frame = frameFor(screen, variant.id)
-
-  const copyIdentifier = async () => {
-    try {
-      await navigator.clipboard.writeText(identifier)
-      setCopyStatus("copied")
-    } catch {
-      setCopyStatus("failed")
-    }
-  }
 
   useEffect(() => {
     dialogRef.current?.showModal()
@@ -100,15 +91,7 @@ export function Viewer({
           <button type="button" className="viewer-button" onClick={() => onNavigate(1)} aria-label="Next flow step">→</button>
         </span>
         <div className="viewer-actions">
-          <button
-            type="button"
-            className="viewer-button"
-            title={identifier}
-            aria-label={`Copy identifier ${identifier}`}
-            onClick={copyIdentifier}
-          >
-            {copyStatus === "copied" ? "Copied" : copyStatus === "failed" ? "Copy failed" : "Copy ID"}
-          </button>
+          <CopyIdButton identifier={identifier} className="viewer-button" />
           <button type="button" className="viewer-button" onClick={() => onVariant(-1)} aria-label="Previous variant">←</button>
           <span className="viewer-variant"><strong>{variant.label}</strong> {variantPosition}/{variantTotal}</span>
           <button type="button" className="viewer-button" onClick={() => onVariant(1)} aria-label="Next variant">→</button>
