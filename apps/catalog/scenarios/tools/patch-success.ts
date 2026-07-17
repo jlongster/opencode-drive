@@ -40,7 +40,7 @@ export const patchSuccessFlow = defineExecutableFlow(
         ],
         surfaces: "inline",
         patterns: "approval",
-        features: ["permission", "tool"],
+        features: ["permission", "tool", "patch"],
         states: "confirmation",
       },
       step: { title: "Permission is requested" },

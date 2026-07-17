@@ -359,6 +359,7 @@
     "patch",
     "permission",
     "question",
+    "read",
     "response",
     "search",
     "session",
@@ -1329,6 +1330,7 @@
         "approval",
         "permission",
         "tool",
+        "patch",
         "confirmation"
       ],
       "screenLabels": [
@@ -1350,7 +1352,8 @@
       ],
       "features": [
         "permission",
-        "tool"
+        "tool",
+        "patch"
       ],
       "states": [
         "confirmation"
@@ -3359,6 +3362,7 @@
         "inline",
         "status",
         "tool",
+        "read",
         "streaming"
       ],
       "screenLabels": [
@@ -3376,7 +3380,8 @@
         "status"
       ],
       "features": [
-        "tool"
+        "tool",
+        "read"
       ],
       "states": [
         "streaming"
@@ -3411,6 +3416,7 @@
         "inline",
         "approval",
         "tool",
+        "read",
         "confirmation"
       ],
       "screenLabels": [
@@ -3430,7 +3436,8 @@
         "approval"
       ],
       "features": [
-        "tool"
+        "tool",
+        "read"
       ],
       "states": [
         "confirmation"
@@ -3463,6 +3470,7 @@
         "inline",
         "status",
         "tool",
+        "read",
         "success"
       ],
       "screenLabels": [
@@ -3480,7 +3488,8 @@
         "status"
       ],
       "features": [
-        "tool"
+        "tool",
+        "read"
       ],
       "states": [
         "success"
@@ -3514,6 +3523,7 @@
         "inline",
         "status",
         "tool",
+        "read",
         "error"
       ],
       "screenLabels": [
@@ -3532,7 +3542,8 @@
         "status"
       ],
       "features": [
-        "tool"
+        "tool",
+        "read"
       ],
       "states": [
         "error"

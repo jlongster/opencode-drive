@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useRef } from "react"
 import type { Screen } from "../catalog"
-import { frameFor } from "../catalog"
+import { frameFor, screenFamily } from "../catalog"
 import { CaptureContextMenu } from "./CaptureContextMenu"
 import { IdChip } from "./IdChip"
 import { TerminalFrame } from "./TerminalFrame"
@@ -92,7 +92,7 @@ export function ContactSheet({
       {screens.length === 0 ? (
         <p className="empty-state">No captures match.</p>
       ) : (
-        Array.from(Map.groupBy(screens, (screen) => screen.category), ([category, categoryScreens]) => (
+        Array.from(Map.groupBy(screens, screenFamily), ([category, categoryScreens]) => (
           <section className="capture-family" id={`family-${category}`} key={category}>
             <header className="capture-family-heading">
               <h2>{category}</h2>

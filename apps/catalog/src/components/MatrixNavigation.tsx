@@ -1,5 +1,5 @@
 import type { Screen } from "../catalog"
-import { label } from "../catalog"
+import { label, screenFamily } from "../catalog"
 
 interface MatrixNavigationProps {
   readonly screens: ReadonlyArray<Screen>
@@ -11,7 +11,10 @@ interface MatrixNavigationProps {
 export function MatrixNavigation({ screens, states, selectedStates, onState }: MatrixNavigationProps) {
   const selected = new Set(selectedStates)
   const categories = Array.from(
-    screens.reduce((counts, screen) => counts.set(screen.category, (counts.get(screen.category) ?? 0) + 1), new Map<string, number>()),
+    screens.reduce((counts, screen) => {
+      const family = screenFamily(screen)
+      return counts.set(family, (counts.get(family) ?? 0) + 1)
+    }, new Map<string, number>()),
   )
   const stateCounts = new Map<string, number>()
   for (const screen of screens) {

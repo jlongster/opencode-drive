@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import { AnimatePresence, m, useReducedMotion } from "motion/react"
 
 interface IdChipProps {
   readonly id: string
@@ -26,7 +26,7 @@ export function IdChip({ id, className = "" }: IdChipProps) {
   }
 
   return (
-    <motion.button
+    <m.button
       type="button"
       className={`id-chip ${className}`.trim()}
       data-copied={copied ? "" : undefined}
@@ -37,7 +37,7 @@ export function IdChip({ id, className = "" }: IdChipProps) {
     >
       <AnimatePresence initial={false} mode="popLayout">
         {copied ? (
-          <motion.svg
+          <m.svg
             key="check"
             className="id-chip-glyph"
             viewBox="0 0 12 12"
@@ -47,7 +47,7 @@ export function IdChip({ id, className = "" }: IdChipProps) {
             exit={{ opacity: 0, scale: 0.65, rotate: 20 }}
             transition={transition}
           >
-            <motion.path
+            <m.path
               d="m2 6.2 2.4 2.3L10 3"
               fill="none"
               stroke="currentColor"
@@ -55,9 +55,9 @@ export function IdChip({ id, className = "" }: IdChipProps) {
               animate={{ pathLength: 1 }}
               transition={transition}
             />
-          </motion.svg>
+          </m.svg>
         ) : (
-          <motion.svg
+          <m.svg
             key="copy"
             className="id-chip-glyph"
             viewBox="0 0 12 12"
@@ -69,13 +69,13 @@ export function IdChip({ id, className = "" }: IdChipProps) {
           >
             <path d="M4.5 3.5v-2h6v6h-2" fill="none" stroke="currentColor" />
             <rect x="1.5" y="4.5" width="6" height="6" fill="none" stroke="currentColor" />
-          </motion.svg>
+          </m.svg>
         )}
       </AnimatePresence>
       <span className="id-chip-text">
         <span className="id-chip-measure" aria-hidden="true">{id}</span>
         <AnimatePresence initial={false} mode="popLayout">
-          <motion.span
+          <m.span
             key={copied ? "copied" : "value"}
             className="id-chip-value"
             initial={{ opacity: 0, y: reducedMotion ? 0 : 5 }}
@@ -84,9 +84,9 @@ export function IdChip({ id, className = "" }: IdChipProps) {
             transition={transition}
           >
             {copied ? "copied" : id}
-          </motion.span>
+          </m.span>
         </AnimatePresence>
       </span>
-    </motion.button>
+    </m.button>
   )
 }

@@ -12,7 +12,7 @@ const screen = (title: string, states: "streaming" | "running" | "success" | "er
     : ["transcript", "tool-card", "status-indicator"] as const,
   surfaces: "inline" as const,
   patterns: states === "confirmation" ? "approval" as const : "status" as const,
-  features: ["tool"] as const,
+  features: ["tool", "read"] as const,
   states,
 })
 

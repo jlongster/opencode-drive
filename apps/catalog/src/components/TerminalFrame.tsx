@@ -24,6 +24,11 @@ const Hidden = 64
 const Strikethrough = 128
 const cache = new Map<string, Promise<FrameArtifact>>()
 const baselineCache = new Map<string, number>()
+let fontsReady: Promise<unknown> | undefined
+
+export function preloadFrame(frame: Frame) {
+  return loadFrame(frame.src)
+}
 
 export function TerminalFrame({ frame, label, lazy = false }: TerminalFrameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -35,7 +40,7 @@ export function TerminalFrame({ frame, label, lazy = false }: TerminalFrameProps
     const render = async () => {
       if (lazy && !isNearViewport(canvas)) return
       const artifact = await loadFrame(frame.src)
-      await Promise.all([
+      fontsReady ??= Promise.all([
         document.fonts.load(`400 ${FontSize}px "${FontFamily}"`),
         document.fonts.load(`700 ${FontSize}px "${FontFamily}"`),
         document.fonts.load(`400 ${FontSize}px "${SymbolFontFamily}"`, "⚙"),
@@ -43,6 +48,7 @@ export function TerminalFrame({ frame, label, lazy = false }: TerminalFrameProps
         document.fonts.load(`400 ${FontSize}px "${SymbolFontFamily2}"`, "△✱⬝"),
         document.fonts.load(`400 ${FontSize}px "${MathFontFamily}"`, "⇆↳⟳"),
       ])
+      await fontsReady
       if (!cancelled) drawFrame(canvas, artifact)
     }
     let observer: IntersectionObserver | undefined

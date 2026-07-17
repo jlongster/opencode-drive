@@ -14,6 +14,7 @@ import { Header } from "./components/Header"
 import { MatrixNavigation } from "./components/MatrixNavigation"
 import { SelectionBar } from "./components/SelectionBar"
 import { Viewer } from "./components/Viewer"
+import { preloadFrame } from "./components/TerminalFrame"
 import { catalogDeepLink, catalogRootUrl, readCatalogLocation } from "./deep-link"
 
 interface AppProps {
@@ -213,13 +214,15 @@ export function App({ catalog }: AppProps) {
   )
   const flows = useMemo(() => filterFlows(catalog.flows, ui.query), [catalog.flows, ui.query])
   const activeFlow = flows.find((flow) => flow.id === ui.activeFlowId) ?? flows[0]
-  const viewerScreens =
-    ui.mode === "flows" && activeFlow
+  const viewerScreens = useMemo(
+    () => ui.mode === "flows" && activeFlow
       ? activeFlow.steps.flatMap((step) => {
           const screen = availableScreens.find((candidate) => candidate.id === step.screenId)
           return screen ? [screen] : []
         })
-      : screens
+      : screens,
+    [activeFlow, availableScreens, screens, ui.mode],
+  )
   const selectedId = viewerScreens.some((screen) => screen.id === ui.selectedScreenId)
     ? ui.selectedScreenId
     : viewerScreens[0]?.id
@@ -297,6 +300,16 @@ export function App({ catalog }: AppProps) {
       }),
     )
   }, [activeVariant.id, activeFlow?.id, selectedScreen, ui.mode, ui.viewerOpen])
+
+  useEffect(() => {
+    if (!ui.viewerOpen || selectedId === undefined || viewerScreens.length < 2) return
+    const current = viewerScreens.findIndex((screen) => screen.id === selectedId)
+    for (const offset of [-1, 1]) {
+      const screen = viewerScreens[(current + offset + viewerScreens.length) % viewerScreens.length]
+      const frame = screen && frameFor(screen, activeVariant.id)
+      if (frame) void preloadFrame(frame)
+    }
+  }, [activeVariant.id, selectedId, ui.viewerOpen, viewerScreens])
 
   useEffect(() => {
     const restore = () => {
@@ -385,7 +398,6 @@ export function App({ catalog }: AppProps) {
       </main>
       {ui.viewerOpen && selectedScreen ? (
         <Viewer
-          key={selectedScreen.id}
           screen={selectedScreen}
           identifier={ui.mode === "flows" && activeFlow?.replayable
             ? `${activeFlow.id}/${selectedScreen.id}`
