@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useRef } from "react"
 import type { Screen } from "../catalog"
 import { frameFor } from "../catalog"
+import { CaptureContextMenu } from "./CaptureContextMenu"
 import { IdChip } from "./IdChip"
 import { TerminalFrame } from "./TerminalFrame"
 
@@ -12,6 +13,7 @@ interface ContactSheetProps {
   readonly variantId: string
   readonly onSelect: (id: string) => void
   readonly onOpen: (id: string) => void
+  readonly deepLinkFor: (id: string) => string
 }
 
 export function ContactSheet({
@@ -22,6 +24,7 @@ export function ContactSheet({
   variantId,
   onSelect,
   onOpen,
+  deepLinkFor,
 }: ContactSheetProps) {
   const gridRef = useRef<HTMLElement>(null)
   const focusedTick = useRef(0)
@@ -115,9 +118,11 @@ export function ContactSheet({
                         if (screen.id !== selectedId) onSelect(screen.id)
                       }}
                     >
-                      <span className="capture-frame">
-                        <TerminalFrame frame={frame} label={screen.title} lazy />
-                      </span>
+                      <CaptureContextMenu identifier={screen.id} deepLink={deepLinkFor(screen.id)}>
+                        <span className="capture-frame">
+                          <TerminalFrame frame={frame} label={screen.title} lazy />
+                        </span>
+                      </CaptureContextMenu>
                     </button>
                     <footer className="capture-caption">
                       <span className="capture-title-wrap">

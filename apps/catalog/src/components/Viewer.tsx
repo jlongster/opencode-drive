@@ -4,10 +4,12 @@ import { facetValues, frameFor, label, taxonomyLabel } from "../catalog"
 import { IdChip } from "./IdChip"
 import { TerminalFrame } from "./TerminalFrame"
 import { CaptureSetSwitcher } from "./CaptureSetSwitcher"
+import { CaptureContextMenu } from "./CaptureContextMenu"
 
 interface ViewerProps {
   readonly screen: Screen
   readonly identifier: string
+  readonly deepLink: string
   readonly variant: Variant
   readonly variants: ReadonlyArray<Variant>
   readonly variantPosition: number
@@ -29,6 +31,7 @@ const facetOrder: ReadonlyArray<Facet> = ["surface", "pattern", "feature", "stat
 export function Viewer({
   screen,
   identifier,
+  deepLink,
   variant,
   variants,
   variantPosition,
@@ -108,9 +111,11 @@ export function Viewer({
       <div className="viewer-body">
         <div className="viewer-stage">
           <figure className="viewer-figure">
-            <div className="viewer-image-wrap">
-              <TerminalFrame frame={frame} label={`${screen.title}, ${variant.label}`} />
-            </div>
+            <CaptureContextMenu identifier={identifier} deepLink={deepLink}>
+              <div className="viewer-image-wrap">
+                <TerminalFrame frame={frame} label={`${screen.title}, ${variant.label}`} />
+              </div>
+            </CaptureContextMenu>
             <figcaption className="viewer-caption">
               <h3>{screen.title}</h3>
               <div className="viewer-label-groups">
