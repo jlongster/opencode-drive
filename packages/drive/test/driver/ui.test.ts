@@ -135,6 +135,27 @@ describe("OpenCodeUi", () => {
     })
   })
 
+  it.live("rejects non-boolean Effect predicate values", () => {
+    const peer = startTransportPeer(({ request, socket }) =>
+      sendResult(socket, request, state),
+    )
+
+    return Effect.gen(function* () {
+      yield* Effect.addFinalizer(() => Effect.promise(() => peer.stop()))
+      const connection = yield* SimulationConnector.ui(peer.url)
+      const predicate = (() => Effect.succeed("not boolean")) as unknown as
+        OpenCodeUi.EffectPredicate<never>
+      const error = yield* OpenCodeUi.make(connection)
+        .waitFor(predicate)
+        .pipe(Effect.flip)
+
+      expect(error).toBeInstanceOf(OpenCodeUi.UiPredicateError)
+      expect(error).toMatchObject({
+        message: "ui.waitFor predicate must return a boolean or Effect",
+      })
+    })
+  })
+
   it.live("interrupts timed-out polling and remains usable", () => {
     const peer = startTransportPeer(({ request, socket }) => {
       if (request.method === "ui.matches") return

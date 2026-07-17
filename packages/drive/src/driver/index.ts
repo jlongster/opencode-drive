@@ -11,9 +11,9 @@ import type {
   OpenCodeTuiConfig,
   Project,
   Setup,
-} from "../script/types.js"
-import * as OpenCodeClient from "./client.js"
-import type * as OpenCodeApi from "./api.js"
+} from "../project.js"
+import * as OpenCodeTui from "./client.js"
+import type * as OpenCodeSdk from "./opencode.js"
 import { error, type OpenCodeDriverError } from "./error.js"
 import type {
   LlmControllerError,
@@ -31,24 +31,24 @@ import type * as Tool from "../tool/index.js"
 export interface Options {
   readonly project?: Project
   readonly config?: OpenCodeConfig
-  readonly tui?: OpenCodeTuiConfig
+  readonly tuiConfig?: OpenCodeTuiConfig
   readonly setup?: Setup
   readonly tools?: Tool.Setup
-  readonly client?: OpenCodeClient.Options
+  readonly tui?: OpenCodeTui.TuiOptions
   readonly opencode?: OpenCodeServer.Target
   readonly keepArtifacts?: boolean
 }
 
 export interface Driver {
-  /** Typed client connected to this driver's private OpenCode service. */
-  readonly api: OpenCodeApi.Api
-  readonly client: OpenCodeClient.Client
-  /** Convenience alias for the primary client's UI. */
+  /** Generated SDK client connected to this driver's private OpenCode service. */
+  readonly opencode: OpenCodeSdk.OpenCode
+  readonly tui: OpenCodeTui.Tui
+  /** Convenience alias for the primary TUI's UI. */
   readonly ui: OpenCodeUi.Ui
   readonly llm: Llm
-  readonly clients: OpenCodeClient.Clients
+  readonly tuis: OpenCodeTui.Tuis
   readonly artifacts: string
-  /** Validates queued LLM work, stops clients, and exports recordings. */
+  /** Validates queued LLM work, stops TUIs, and exports recordings. */
   readonly settle: () => Effect.Effect<
     RunReport,
     | LlmControllerError
@@ -64,7 +64,7 @@ const makeWithServices = Effect.fn("OpenCodeDriver.makeWithServices")(
     const project = yield* OpenCodeProject.make({
       project: options.project,
       config: options.config,
-      tui: options.tui,
+      tui: options.tuiConfig,
       setup: ToolController.composeSetup(toolController, options.tools, options.setup),
       keepArtifacts: options.keepArtifacts,
     })
@@ -79,13 +79,13 @@ const makeWithServices = Effect.fn("OpenCodeDriver.makeWithServices")(
     }).pipe(Effect.mapError((cause) => error("server.prepare", cause)))
     const prepared = yield* PreparedDriver.makeWithServices(instance, {
       visible: options.opencode?.visible,
-      client: options.client,
+      tui: options.tui,
       artifactsRetained: options.keepArtifacts ?? false,
       compatibility: options.opencode?.compatibility,
     })
     if (prepared.driver === undefined)
       return yield* Effect.die(
-        new Error("automatic driver did not launch a client"),
+        new Error("automatic driver did not launch a TUI"),
       )
     return { driver: prepared.driver, failure: prepared.failure }
   },
@@ -196,15 +196,21 @@ export type {
   CompatibilityPolicy,
   EndpointCompatibility,
 } from "../simulation/connector.js"
-export type { Client, Clients, Options as ClientOptions, Recording } from "./client.js"
+export type {
+  Recording,
+  Tui,
+  TuiLaunchError,
+  TuiOptions,
+  Tuis,
+} from "./client.js"
 export type { Llm } from "./llm.js"
 export type { Target as OpenCodeTarget } from "./server.js"
-export type { Api } from "./api.js"
+export type { OpenCode } from "./opencode.js"
 export type { Ui } from "./ui.js"
 export type {
   Project,
   ProjectFileSystem,
   Setup,
   SetupContext,
-} from "../script/types.js"
+} from "../project.js"
 export * from "./report.js"

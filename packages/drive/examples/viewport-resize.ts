@@ -2,7 +2,7 @@ import { Effect } from "effect"
 import { defineScript, Llm } from "opencode-drive"
 
 export default defineScript({
-  client: { viewport: { cols: 120, rows: 36 } },
+  tui: { viewport: { cols: 120, rows: 36 } },
 
   setup: ({ fs }) => fs.writeFile(
     "src/viewport.ts",

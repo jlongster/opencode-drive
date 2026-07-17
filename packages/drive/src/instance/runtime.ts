@@ -23,7 +23,7 @@ import type {
   OpenCodeTuiConfig,
   Project,
   Setup,
-} from "../script/types.js"
+} from "../project.js"
 
 type Viewport = Frontend.ResizeParams
 
@@ -53,7 +53,7 @@ export interface Options {
   readonly log?: (message: string) => void
 }
 
-export interface Client {
+export interface TuiProcess {
   readonly endpoint: string
   readonly process: Process.Running
   readonly recording?: RecordingPaths
@@ -63,6 +63,7 @@ export interface Client {
 export interface Instance {
   readonly artifacts: string
   readonly logs: string
+  readonly visible: boolean
   readonly endpoints: {
     readonly ui: string
     readonly backend: string
@@ -74,10 +75,10 @@ export interface Instance {
     OpenCodeInstanceError
   >
   readonly killServer: Effect.Effect<void, OpenCodeInstanceError>
-  readonly launchClient: (
+  readonly launchTui: (
     name: string,
     options?: { readonly record?: boolean; readonly viewport?: Viewport },
-  ) => Effect.Effect<Client, OpenCodeInstanceError>
+  ) => Effect.Effect<TuiProcess, OpenCodeInstanceError>
   readonly waitForDrive: (
     requirement?: "ui" | "backend" | "both",
     timeout?: number,
@@ -92,8 +93,8 @@ interface StateFields {
   readonly server?: Process.Running
   readonly pendingServer?: Process.Running
   readonly primary?: Process.Running
-  readonly clients: ReadonlyMap<string, Process.Running>
-  readonly pendingClients: ReadonlyMap<string, Process.Running>
+  readonly tuis: ReadonlyMap<string, Process.Running>
+  readonly pendingTuis: ReadonlyMap<string, Process.Running>
 }
 
 type State = Data.TaggedEnum<{
@@ -163,8 +164,8 @@ export const make = Effect.fn("OpenCodeInstance.make")(function* (
   const fileSystem = yield* FileSystem.FileSystem
   const state = yield* Ref.make<State>(State.Running({
     recording: initialRecording,
-    clients: new Map(),
-    pendingClients: new Map(),
+    tuis: new Map(),
+    pendingTuis: new Map(),
   }))
   const lock = yield* Semaphore.make(1)
   const instanceScope = yield* Scope.Scope
@@ -319,122 +320,122 @@ export const make = Effect.fn("OpenCodeInstance.make")(function* (
     }),
   )
 
-  const launchClient = Effect.fn("OpenCodeInstance.launchClient")(function* (
+  const launchTui = Effect.fn("OpenCodeInstance.launchTui")(function* (
     name: string,
-    clientOptions: { readonly record?: boolean; readonly viewport?: Viewport } = {},
+    tuiOptions: { readonly record?: boolean; readonly viewport?: Viewport } = {},
   ) {
     const pending = yield* lock.withPermit(
       Effect.gen(function* () {
         const current = yield* Ref.get(state)
         if (!options.scripted)
-          return yield* Effect.fail(instanceError("launch client", "client launch requires scripted mode"))
+          return yield* Effect.fail(instanceError("launch TUI", "TUI launch requires scripted mode"))
         if (current._tag !== "Running")
-          return yield* Effect.fail(instanceError("launch client", "the instance is stopping"))
+          return yield* Effect.fail(instanceError("launch TUI", "the instance is stopping"))
         if (current.server === undefined)
-          return yield* Effect.fail(instanceError("launch client", "launch the script server before launching clients"))
+          return yield* Effect.fail(instanceError("launch TUI", "launch the script server before launching TUIs"))
         if (!isValidName(name))
-          return yield* Effect.fail(instanceError("launch client", `invalid client name: ${name}`))
-        if (current.clients.has(name) || current.pendingClients.has(name))
-          return yield* Effect.fail(instanceError("launch client", `client "${name}" is already running`))
-        if (options.visible && current.clients.size + current.pendingClients.size > 0)
-          return yield* Effect.fail(instanceError("launch client", "multiple clients require headless scripted mode"))
-        const primary = current.clients.size + current.pendingClients.size === 0
-        const clientEndpoints = {
+          return yield* Effect.fail(instanceError("launch TUI", `invalid TUI name: ${name}`))
+        if (current.tuis.has(name) || current.pendingTuis.has(name))
+          return yield* Effect.fail(instanceError("launch TUI", `TUI "${name}" is already running`))
+        if (options.visible && current.tuis.size + current.pendingTuis.size > 0)
+          return yield* Effect.fail(instanceError("launch TUI", "multiple TUIs require headless scripted mode"))
+        const primary = current.tuis.size + current.pendingTuis.size === 0
+        const tuiEndpoints = {
           ui: primary ? endpoints.ui : `ws://127.0.0.1:${yield* freePort}`,
           backend: endpoints.backend,
         }
-        const driveName = processDriveName(options.name, `client-${name}`)
-        const recording = clientOptions.record
+        const driveName = processDriveName(options.name, `tui-${name}`)
+        const recording = tuiOptions.record
           ? recordingPaths(media)
           : primary
             ? current.recording
             : undefined
         yield* writeManifest(
           driveName,
-          clientEndpoints,
+          tuiEndpoints,
           recording,
-          clientOptions.viewport ?? options.viewport,
+          tuiOptions.viewport ?? options.viewport,
         )
-        options.log?.(`launching client ${name}`)
-        const client = yield* spawn(driveName, command, `client-${name}`)
+        options.log?.(`launching TUI ${name}`)
+        const tui = yield* spawn(driveName, command, `tui-${name}`)
         yield* Ref.update(state, (value) => ({
           ...value,
-          pendingClients: new Map(value.pendingClients).set(name, client),
+          pendingTuis: new Map(value.pendingTuis).set(name, tui),
         }))
-        return { client, clientEndpoints, primary, recording }
+        return { tui, tuiEndpoints, primary, recording }
       }),
     )
-    const { client, clientEndpoints, primary, recording } = pending
+    const { tui, tuiEndpoints, primary, recording } = pending
     const removePending = lock.withPermit(
       Ref.update(state, (value) => {
-        if (value.pendingClients.get(name) !== client) return value
-        const pendingClients = new Map(value.pendingClients)
-        pendingClients.delete(name)
-        return { ...value, pendingClients }
+        if (value.pendingTuis.get(name) !== tui) return value
+        const pendingTuis = new Map(value.pendingTuis)
+        pendingTuis.delete(name)
+        return { ...value, pendingTuis }
       }),
     )
-    yield* waitForWebSocket(clientEndpoints.ui, client, 60_000).pipe(
+    yield* waitForWebSocket(tuiEndpoints.ui, tui, 60_000).pipe(
       Effect.onError(() =>
         removePending.pipe(
-          Effect.andThen(client.terminate),
+          Effect.andThen(tui.terminate),
           Effect.ignore,
         ),
       ),
-      Effect.mapError((cause) => instanceError("wait for client", cause)),
+      Effect.mapError((cause) => instanceError("wait for TUI", cause)),
     )
     const committed = yield* lock.withPermit(
       Effect.gen(function* () {
         const current = yield* Ref.get(state)
         if (
           current._tag !== "Running" ||
-          current.pendingClients.get(name) !== client
+          current.pendingTuis.get(name) !== tui
         )
           return false
-        const pendingClients = new Map(current.pendingClients)
-        pendingClients.delete(name)
+        const pendingTuis = new Map(current.pendingTuis)
+        pendingTuis.delete(name)
         yield* Ref.set(state, {
           ...current,
-          primary: primary ? client : current.primary,
-          clients: new Map(current.clients).set(name, client),
-          pendingClients,
+          primary: primary ? tui : current.primary,
+          tuis: new Map(current.tuis).set(name, tui),
+          pendingTuis,
         })
         return true
       }),
     )
     if (!committed) {
-      yield* client.terminate.pipe(Effect.ignore)
-      return yield* Effect.fail(instanceError("launch client", "the instance is stopping"))
+      yield* tui.terminate.pipe(Effect.ignore)
+      return yield* Effect.fail(instanceError("launch TUI", "the instance is stopping"))
     }
-    yield* client.exitCode.pipe(
+    yield* tui.exitCode.pipe(
       Effect.ignore,
       Effect.andThen(
         Ref.update(state, (value) => {
-          if (value.clients.get(name) !== client) return value
-          const clients = new Map(value.clients)
-          clients.delete(name)
-          return { ...value, clients }
+          if (value.tuis.get(name) !== tui) return value
+          const tuis = new Map(value.tuis)
+          tuis.delete(name)
+          return { ...value, tuis }
         }),
       ),
       Effect.forkIn(instanceScope),
     )
-    options.log?.(`client ${name} ready`)
+    options.log?.(`TUI ${name} ready`)
     const close = Effect.gen(function* () {
       yield* Ref.update(state, (value) => {
-        if (value.clients.get(name) !== client) return value
-        const clients = new Map(value.clients)
-        clients.delete(name)
-        return { ...value, clients }
+        if (value.tuis.get(name) !== tui) return value
+        const tuis = new Map(value.tuis)
+        tuis.delete(name)
+        return { ...value, tuis }
       })
-      yield* client.terminate.pipe(
-        Effect.mapError((cause) => instanceError("close client", cause)),
+      yield* tui.terminate.pipe(
+        Effect.mapError((cause) => instanceError("close TUI", cause)),
       )
     })
     return {
-      endpoint: clientEndpoints.ui,
-      process: client,
+      endpoint: tuiEndpoints.ui,
+      process: tui,
       recording,
       close,
-    } satisfies Client
+    } satisfies TuiProcess
   })
 
   const waitForDrive = Effect.fn("OpenCodeInstance.waitForDrive")(function* (
@@ -462,8 +463,8 @@ export const make = Effect.fn("OpenCodeInstance.make")(function* (
         return yield* Effect.fail(instanceError("restart", "the instance is stopping"))
       options.log?.("restarting OpenCode")
       const processes = new Set([
-        ...current.clients.values(),
-        ...current.pendingClients.values(),
+        ...current.tuis.values(),
+        ...current.pendingTuis.values(),
       ])
       if (current.server !== undefined) processes.add(current.server)
       if (current.pendingServer !== undefined) processes.add(current.pendingServer)
@@ -481,8 +482,8 @@ export const make = Effect.fn("OpenCodeInstance.make")(function* (
       const recording = options.record ? recordingPaths(media) : undefined
       yield* Ref.set(state, State.Running({
         recording,
-        clients: new Map(),
-        pendingClients: new Map(),
+        tuis: new Map(),
+        pendingTuis: new Map(),
       }))
       if (!options.scripted) {
         const primary = yield* launchDefault(recording)
@@ -515,8 +516,8 @@ export const make = Effect.fn("OpenCodeInstance.make")(function* (
       if (current._tag === "Stopped") return undefined
       yield* Ref.set(state, State.Stopping(current))
       options.log?.("stopping OpenCode")
-      const processes = new Set(current.clients.values())
-      for (const process of current.pendingClients.values())
+      const processes = new Set(current.tuis.values())
+      for (const process of current.pendingTuis.values())
         processes.add(process)
       if (current.server !== undefined) processes.add(current.server)
       if (current.pendingServer !== undefined) processes.add(current.pendingServer)
@@ -531,8 +532,8 @@ export const make = Effect.fn("OpenCodeInstance.make")(function* (
       )
       yield* Ref.set(state, State.Stopped({
         recording: current.recording,
-        clients: new Map(),
-        pendingClients: new Map(),
+        tuis: new Map(),
+        pendingTuis: new Map(),
       }))
       const combined = Exit.asVoidAll([...exits, serviceExit])
       if (Exit.isFailure(combined))
@@ -553,6 +554,7 @@ export const make = Effect.fn("OpenCodeInstance.make")(function* (
   return {
     artifacts,
     logs,
+    visible: options.visible ?? false,
     endpoints,
     recording: Ref.get(state).pipe(Effect.map((current) => current.recording)),
     primary: Ref.get(state).pipe(
@@ -564,7 +566,7 @@ export const make = Effect.fn("OpenCodeInstance.make")(function* (
     ),
     launchServer,
     killServer,
-    launchClient,
+    launchTui,
     waitForDrive,
     restart,
     wait,

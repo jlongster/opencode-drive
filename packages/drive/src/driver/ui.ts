@@ -376,11 +376,11 @@ function predicateEffect<E>(
           message: `ui.waitFor predicate failed: ${cause instanceof Error ? cause.message : String(cause)}`,
         }),
     })
-    if (Effect.isEffect(result)) return yield* result
-    if (typeof result === "boolean") return result
+    const value: unknown = Effect.isEffect(result) ? yield* result : result
+    if (typeof value === "boolean") return value
     return yield* Effect.fail(
       new UiPredicateError({
-        cause: result,
+        cause: value,
         message: "ui.waitFor predicate must return a boolean or Effect",
       }),
     )

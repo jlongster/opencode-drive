@@ -1,504 +1,176 @@
 # OpenCode Driver Architecture
 
-Status: architecture guide for the Effect migration
+This guide describes the current Effect-native architecture. The public call
+sites are documented in [OpenCode Driver API](./open-code-driver-api.md).
 
-This document explains how the settled userland API desugars into scoped resources and internal adapters. The public API remains in [OpenCode Driver API](./open-code-driver-api.md).
+## Domain Model
 
-## The driver composes a project, server, and clients
-
-`OpenCodeDriver.make(...)` creates one isolated project, one shared OpenCode server, one primary client, and the connections needed to drive them. The project does not own or expose RPC endpoints.
-
-```text
-                  ╭─────────────────────╮
-                  │ OpenCodeDriver.make │
-                  ╰──────────┬──────────╯
-            ╭────────────────╰─────────────────╮
-            ▼                                  ▼
-╭──────────────────────╮            ╭─────────────────────╮
-│ OpenCodeProject.make │            │ OpenCodeServer.make │
-╰──────────────────────╯            ╰──────────┬──────────╯
-              ╭───────────────────────────────┬╯
-              ▼                               ▼
-   ╭────────────────────╮            ╭────────────────╮
-   │ Shared LLM Control │            │ server.clients │
-   ╰────────────────────╯            ╰────────┬───────╯
-            ╭─────────────────────────────────╰╮
-            ▼                                  ▼
- ╭─────────────────────╮            ╭────────────────────╮
- │ OpenCodeClient.make │            │ Additional Clients │
- ╰──────────┬──────────╯            ╰──────────┬─────────╯
-            ╰────╮                        ╭────╯
-                 ▼                        ▼
-          ╭────────────╮            ╭───────────╮
-          │ Primary UI │            │ client.ui │
-          ╰────────────╯            ╰───────────╯
-```
-
-The domain relationships are:
-
-- An `OpenCodeProject` is the isolated workspace directory and its configuration.
-- An `OpenCodeServer` is one scoped server process with shared LLM control.
-- An `OpenCodeClient` is one scoped frontend process connected to that server.
-- A client owns one UI control connection and an optional recording.
-- The server owns the factory used to make connected clients.
-
-## Capabilities support multiple entry points
-
-`OpenCodeDriver.make(...)` is the convenience constructor for an ephemeral run whose project, server, clients, and connections are owned by one Effect scope. It is not the only entry point into the underlying capabilities.
+`OpenCodeDriver` composes four resources:
 
 ```text
-Library Effect / Drive script
-  -> OpenCodeDriver.make
-  -> ui + llm + clients
-  -> owns the complete lifecycle
-
-CLI send
-  -> resolve an existing UI endpoint
-  -> ui
-  -> owns only its connection
-
-Future MCP adapter
-  -> selected capability modules
-  -> owns only the resources it acquires
+OpenCodeDriver
+  project       isolated files and configuration
+  opencode      generated OpenCode SDK client
+  tui           primary frontend process
+  tuis          additional frontend process factory
+  ui            convenience alias for tui.ui
+  llm           shared simulated-model control
 ```
 
-UI and LLM control remain small interfaces even when returned together by the driver. A future protocol capability such as tool-result control can become another interface on the aggregate when its behavior is understood; it does not require a separate package or a larger driver constructor.
+The names distinguish the two kinds of client involved:
 
-Connecting to an already-running OpenCode instance is an explicit compatibility requirement. `opencode-drive send` targets a named or visible Drive instance and falls back to `ws://127.0.0.1:40900` when no such instance is registered. Migrating the connection implementation to Effect RPC must not require the CLI to create a project or process owner, and closing the CLI connection must never terminate the externally owned OpenCode process.
+- `opencode` is the generated `@opencode-ai/client` SDK value.
+- `Tui` is a launched OpenCode frontend process with `ui`, `close`, and an
+  optional `recording`.
+- `Tuis` launches and supervises additional frontend processes connected to
+  the same server.
+- Transport-level JSON-RPC clients remain private implementation details.
 
-## The project is only the workspace
+`defineScript` consumes these exact capabilities. It adds a branded module
+contract, restart behavior, filesystem access, and explicit manual launch. It
+does not define another UI, TUI, LLM, or project vocabulary.
 
-The current artifact directory contains several concepts that should not be conflated:
+## Ownership
 
 ```text
-run-034689/
-|-- files/              # OpenCodeProject workspace
-|   |-- .git/
-|   |-- .opencode/
-|   `-- src/
-|-- drive/              # Internal launch descriptors
-|   |-- service.json
-|   `-- client-*.json
-|-- home/               # Isolated process home and XDG state
-`-- logs/               # Server and client process logs
+Effect Scope
+  OpenCodeProject
+    artifact root
+    isolated project files
+  OpenCodeInstance
+    server process
+    TUI processes
+    launch descriptors and logs
+  OpenCodeServer
+    backend simulation connection
+    LLM controller
+    generated OpenCode SDK connection
+    TUI supervisor
+      primary TUI scope
+      additional TUI scopes
 ```
 
-`OpenCodeProject.make(...)` owns `files/`. It creates the directory, writes fixture files and configuration, applies setup, and optionally creates a Git baseline.
+`OpenCodeDriver.make(options)` requires `Scope.Scope`. It returns once the
+server, generated SDK client, primary TUI, and simulation connections are
+ready. `OpenCodeDriver.use` supplies that scope and performs terminal
+settlement even when the user program fails.
 
-The files under `drive/` are internal launch descriptors. They tell a spawned OpenCode process which UI and backend endpoints, viewport, and recording timeline to use. They are transport wiring, not part of the project model.
+## Settlement
 
-The endpoint owners are:
+Settlement is one shared terminal operation. It runs in this order:
 
-- `OpenCodeServer` owns the backend simulation endpoint.
-- Each `OpenCodeClient` owns one UI simulation endpoint.
+1. Validate that queued LLM work was consumed.
+2. Shut down the LLM controller.
+3. Finish active recording timelines.
+4. Close all TUI scopes and processes.
+5. Export completed recordings.
+6. Decode the schema-validated `RunReport`.
 
-## Domain constructors use `make`
+`driver.settle()` is shared and idempotent. Once settlement starts, `tuis`
+rejects new launches and `llm` rejects new responses. `OpenCodeDriver.use`
+combines a user-program failure with a settlement failure rather than hiding
+either cause.
 
-Scoped domain resources consistently use `make`:
+## TUI Lifecycle
+
+`Tuis.launch(options)` generates an internal identity. `Tuis.launch(name,
+options)` uses a stable caller-supplied identity. Both return the same value:
 
 ```ts
-OpenCodeDriver.make(options)
-OpenCodeProject.make(options)
-OpenCodeServer.make(options)
-OpenCodeClient.make(options)
-server.clients.make(options)
+interface Tui {
+  readonly ui: Ui
+  readonly close: () => Effect.Effect<void>
+  readonly recording?: Recording
+}
 ```
 
-Infrastructure keeps the verb that describes its operation:
+Each TUI owns one frontend process, one negotiated UI connection, and
+optionally one recording timeline. Closing a named TUI releases its identity
+for reuse. An unexpected process exit fails the owning driver or script.
 
-```ts
-processSpawner.spawn(command)
-simulationConnector.backend(endpoint)
-simulationConnector.ui(endpoint)
-```
+The primary TUI is not a special interface. `driver.tui` and values returned
+by `driver.tuis` have exactly the same `Tui` type. `driver.ui` is only
+`driver.tui.ui` exposed for the common single-TUI call site.
 
-`make` means "acquire this domain resource and return it ready to use." `spawn` and endpoint connection remain hidden implementation operations.
+## OpenCode SDK
 
-## `OpenCodeDriver.make` is shallow orchestration over deep modules
+The server process writes an authenticated service registration into its
+isolated state directory. `driver/opencode.ts` discovers that registration and
+constructs the generated Effect SDK client with the project directory header.
+Passwords and registration paths remain internal. The resulting value is
+exposed as `driver.opencode` and `ScriptContext.opencode`.
 
-The high-level constructor should read as a domain recipe:
+## Canonical Protocol
 
-```ts
-export const make = Effect.fn("OpenCodeDriver.make")(
-  function* (options: OpenCodeDriver.Options) {
-    const project = yield* OpenCodeProject.make({
-      project: options.project,
-      config: options.config,
-    })
-
-    const server = yield* OpenCodeServer.make({
-      project,
-      target: options.opencode,
-    })
-
-    const client = yield* server.clients.make(
-      options.client,
-    )
-
-    return OpenCodeDriver.of({
-      ui: client.ui,
-      llm: server.llm,
-      clients: server.clients,
-    })
-  },
-)
-```
-
-The constructor does not manage ports, process flags, WebSocket listeners, request IDs, recording files, or cleanup directly. Those details stay behind the modules that own them.
-
-## The server hides its process and backend connection
-
-`OpenCodeServer.make(...)` acquires the server process, waits for readiness, connects backend control, creates shared LLM control, and exposes a client factory.
-
-```ts
-export const make = Effect.fn("OpenCodeServer.make")(
-  function* (options: OpenCodeServer.Options) {
-    const connector = yield* SimulationConnector.Service
-
-    const instance = yield* OpenCodeInstance.make({
-      artifacts: options.project.artifacts,
-      name: `library-${crypto.randomUUID().slice(0, 12)}`,
-      scripted: true,
-      ...options.target,
-    })
-    const process = yield* instance.launchServer
-    const backend = yield* connector.backend(
-      process.endpoint,
-    )
-    const llm = yield* LlmController.make(backend)
-    const clients = yield* OpenCodeClients.make({
-      instance,
-      connector,
-    })
-
-    return OpenCodeServer.of({
-      llm,
-      clients,
-    })
-  },
-)
-```
-
-The returned server value has domain capabilities. It does not expose the raw backend WebSocket.
-
-## Each client hides its process and UI connection
-
-`OpenCodeClient.make(...)` acquires one frontend process and connects typed UI control to that exact process.
-
-```ts
-export const make = Effect.fn("OpenCodeClient.make")(
-  function* (options: OpenCodeClient.Options) {
-    const process = yield* options.instance.launchClient(options.identity)
-    const ui = yield* options.connector.ui(
-      process.endpoint,
-    )
-
-    return OpenCodeClient.of({
-      ui,
-    })
-  },
-)
-```
-
-`clients.make` generates an identity. `clients.launch` accepts a stable identity
-for workflows that close and relaunch clients or need recognizable logs and
-artifact names. Both return the same canonical `Client` interface.
-
-## The connector is an internal transport adapter
-
-The driver and OpenCode processes communicate over local WebSockets. Localhost does not remove the protocol seam: the processes still exchange OpenCode's existing JSON-RPC frames and fail independently.
-
-`SimulationConnector` owns:
-
-- WebSocket acquisition and release.
-- Connection timeout and interruption.
-- Request ID correlation.
-- Canonical OpenCode JSON-RPC framing.
-- Schema validation of results and notifications.
-- Rejection of pending requests when the connection closes.
-- Backend `llm.request` delivery as a validated `Stream`.
-- Generated `RpcClient` acquisition through a custom protocol adapter.
-
-The connector is injected into server and client constructors. It is not visible in `OpenCodeDriver.make(...)` or in userland.
+`simulation/protocol.ts` contains the single schema definition for OpenCode's
+handshake, frontend, and backend simulation messages. `client/protocol.ts`
+publishes those namespaces without redefining their data types.
 
 ```text
-Driver                    Connector                      Process
-   │                          │                             │
-   ├─ spawn with launch descriptor ─────────────────────────▶
-   │                          │                             │
-   ├─ connect(endpoint) ──────▶                             │
-   │                          │                             │
-   │                          ├─ open localhost WebSocket ──▶
-   │                          │                             │
-   │                          ◀─ ready ─────────────────────┤
-   │                          │                             │
-   ◀─ typed protocol client ──┤                             │
-   │                          │                             │
+Frontend protocol schemas
+  -> driver/ui.ts        Effect Ui capability
+  -> driver/client.ts    Tui and Tuis lifecycle
+  -> driver/index.ts     OpenCodeDriver aggregate
+  -> script/types.ts     exact capability reuse
 ```
 
-The same seam supports a real WebSocket adapter, direct connection to an already-running endpoint, and deterministic test adapters.
+CLI `--command.ui.*` names are exhaustively checked against
+`Frontend.Capabilities`. The Promise transport under `opencode-drive/client`
+is separate from the Effect programmatic model but consumes the same protocol
+schemas.
 
-## Scope mirrors ownership
+## Transport Seam
 
-The driver owns child scopes for the project, server internals, LLM workers, primary client, and additional clients.
+`SimulationConnector` owns WebSocket acquisition, handshake negotiation,
+schema validation, request correlation, interruption, and connection failure.
+The driver receives the connector through an Effect service and does not
+expose it in userland.
+
+The UI connection is request-response JSON-RPC. The backend additionally
+receives unsolicited `llm.request` notifications and exposes them as a
+validated stream to the LLM controller.
+
+## Project Setup
+
+Neutral project contracts live in `src/project.ts` so neither the driver nor
+scripts own the shared vocabulary:
 
 ```text
-                                                                                          ╭─┬────────────┬─╮
-                                                                                          │ │Driver Scope│ │
-                                                                                          ╰─┴──────┬─────┴─╯
-          ╭───────────────────────────────┬───────────────────────────────┬────────────────────────╰───────┬───────────────────────────────────┬───────────────────────────────────────╮
-          ▼                               ▼                               ▼                                ▼                                   ▼                                       ▼
-╭───────────────────╮            ╭────────────────╮            ╭────────────────────╮            ╭───────────────────╮            ╭─┬────────────────────┬─╮            ╭─┬────────────────────────┬─╮
-│ Project Workspace │            │ Server Process │            │ Backend Connection │            │ LLM Worker Fibers │            │ │Primary Client Scope│ │            │ │Additional Client Scopes│ │
-╰───────────────────╯            ╰────────────────╯            ╰────────────────────╯            ╰───────────────────╯            ╰─┴──────────┬─────────┴─╯            ╰─┴────────────┬───────────┴─╯
-                                     ╭─────────────────────────────┬───────────────────────────────┬────────────────────────────────┬──────────╯──────────────────┬────────────────────╯
-                                     ▼                             ▼                               ▼                                ▼                             ▼
-                           ╭──────────────────╮            ╭───────────────╮            ╭────────────────────╮            ╭──────────────────╮            ╭───────────────╮
-                           │ Frontend Process │            │ UI Connection │            │ Optional Recording │            │ Frontend Process │            │ UI Connection │
-                           ╰──────────────────╯            ╰───────────────╯            ╰────────────────────╯            ╰──────────────────╯            ╰───────────────╯
+Project
+Setup
+SetupContext
+ProjectFileSystem
+OpenCodeConfig
+OpenCodeTuiConfig
 ```
 
-The acquisition order does not naturally produce the required shutdown order: server internals are acquired before the primary client, while LLM workers must stop before client recordings and processes. An explicit shutdown coordinator closes private child scopes in this order:
+Configuration is applied in this order:
 
-1. Interrupt and join response workers.
-2. Finish client recordings.
-3. Close UI connections.
-4. Terminate client processes.
-5. Close backend control.
-6. Terminate the server process.
-7. Apply artifact-retention policy.
+1. Write declared project files.
+2. Read fixture `opencode.jsonc` and `tui.jsonc` values.
+3. Deep-merge `config` and `tuiConfig`; arrays replace existing arrays.
+4. Run Effect-only `setup`, which may mutate both merged objects.
+5. Write normalized JSON and optionally commit the Git baseline.
 
-Every process, connection, listener, and temporary directory has one scope owner.
-
-Ambient reverse finalization remains the safety net for partial acquisition and interruption. Normal shutdown uses the same idempotent releases through the coordinator rather than relying on finalizer registration order.
-
-## Effect primitives replace manual lifecycle coordination
-
-| Concern | Effect primitive |
-|---|---|
-| Process, socket, and temporary-directory ownership | `Scope` and `Effect.acquireRelease` |
-| Bracketed use whose settlement can fail | `Effect.acquireUseRelease` |
-| Readiness, process exit, and first failure | `Deferred` |
-| Queued future LLM responses | `Queue` |
-| Backend request notifications | `Stream` over a private queue |
-| Concurrent response handlers | `FiberSet` |
-| Named active client workers | `FiberMap` where keyed supervision is needed |
-| Readiness polling | `Schedule` plus an outer timeout |
-| Lifecycle state | One tagged state in `Ref` |
-| Wire, persisted, and user input | Effect `Schema` |
-| Expected boundary failures | `Schema.TaggedErrorClass` |
-| Reusable workflows | `Effect.fn("Module.operation")` |
-
-Do not translate each mutable field into its own `Ref`, each callback into a `Queue`, or each object into a `Context.Service`. Use primitives only where they express real ownership or coordination.
-
-## Stable adapters are services; dynamic resources are values
-
-The architecture uses existing Effect services for stable infrastructure and keeps Drive resources as scoped values:
-
-| Service | Real adapters |
-|---|---|
-| Effect `ChildProcessSpawner` | Node child-process layer and deterministic test layers |
-| `SimulationConnector` | Canonical WebSocket adapter and in-memory test adapter |
-
-Dynamic resources remain scoped values:
-
-- `OpenCodeProject`
-- `OpenCodeInstance`
-- `OpenCodeServer`
-- `OpenCodeClient`
-- UI and backend protocol clients
-- `OpenCodeDriver`
-
-This avoids creating a service tag for every object while retaining replaceable infrastructure seams.
-
-## Source layout follows domain seams
-
-New modules are grouped by the domain knowledge they own rather than by Effect primitive:
+## Dependency Direction
 
 ```text
-src/
-|-- llm/
-|   `-- index.ts              # Pure output schemas and constructors
-|-- driver/
-|   |-- index.ts              # OpenCodeDriver.make
-|   |-- project.ts            # OpenCodeProject.make
-|   |-- server.ts             # OpenCodeServer.make
-|   |-- client.ts             # OpenCodeClient.make
-|   |-- ui.ts                 # UI capability
-|   `-- llm-controller.ts     # Live LLM capability
-|-- instance/
-|   |-- process.ts            # Scoped Effect child-process primitives
-|   |-- runtime.ts            # OpenCodeInstance lifecycle
-|   `-- instance.ts           # Artifact and project preparation
-|-- simulation/
-|   |-- protocol.ts           # Canonical OpenCode schemas
-|   |-- rpc.ts                # Drive-local RpcGroups
-|   |-- connector.ts          # SimulationConnector interface
-|   `-- opencode-protocol.ts  # Existing JSON-RPC adapter
-|-- client/                   # Existing public compatibility facade
-|-- cli/
-|-- recording/
-`-- script/
+project     -> Effect and Schema
+simulation  -> canonical protocol and Effect RPC
+driver      -> project + simulation + instance + recording
+script      -> project + driver capabilities
+cli         -> script + driver + Promise transport
 ```
 
-The existing `src/client` module remains in place while the generated clients are introduced. Once the simulation implementation moves, its public exports become a compatibility facade over `src/simulation`; callers do not need to migrate in lockstep. The private detached-instance control plane remains under `src/instance` because it is not part of the OpenCode simulation protocol.
+Lower-level modules do not import the package root or the driver/script
+barrels. `script/types.ts` may reference driver capabilities; driver modules
+must not reference script types.
 
-The dependency direction is one-way:
+## Public Entry Points
 
-```text
-llm        -> Effect Schema
-simulation -> Effect RPC + shared pure schemas
-driver     -> llm + simulation
-client     -> simulation
-script/cli -> driver and/or client
-```
-
-`src/client` is a leaf compatibility facade. `src/driver` and `src/simulation` must never import through it or through the root package barrel.
-
-## Effect RPC owns Drive's contracts and generated clients
-
-OpenCode already exposes every UI and backend operation Drive needs. Its private `@opencode-ai/simulation` package defines the schemas, and its frontend and backend simulation processes use manual `Bun.serve` WebSocket dispatchers that speak plain JSON-RPC.
-
-Drive currently mirrors that canonical protocol in `src/client/protocol.ts`. The first migration keeps the OpenCode processes and wire format unchanged. Drive defines local `RpcGroup`s that reference those schemas without changing command names or parameter shapes.
-
-```ts
-const UiRpcs = RpcGroup.make(
-  Rpc.make("ui.state", {
-    success: Frontend.State,
-  }),
-  Rpc.make("ui.type", {
-    payload: Frontend.TypeParams,
-    success: Frontend.State,
-  }),
-  Rpc.make("ui.screenshot", {
-    payload: Schema.UndefinedOr(
-      Frontend.ScreenshotParams,
-    ),
-    success: Frontend.Screenshot,
-  }),
-)
-```
-
-`RpcClient.make(UiRpcs)` provides the generated typed client, Schema encoding and decoding, middleware, tracing, interruption, and `RpcTest` support. A custom protocol underneath it translates Effect RPC requests and exits to OpenCode's exact JSON-RPC frames:
-
-```ts
-const protocol = yield* OpenCodeRpcProtocol.make(endpoint)
-
-const rpc = yield* RpcClient.make(UiRpcs).pipe(
-  Effect.provideService(
-    RpcClient.Protocol,
-    protocol,
-  ),
-)
-```
-
-The UI module wraps generated dotted methods with the settled userland names:
-
-```ts
-const type = (text: string) =>
-  rpc["ui.type"]({ text })
-
-const state = () =>
-  rpc["ui.state"]()
-```
-
-```text
-UiRpcs
-  -> generated RpcClient
-  -> custom OpenCodeRpcProtocol
-  -> exact OpenCode JSON-RPC
-  -> client UI WebSocket
-
-BackendRpcs
-  -> generated RpcClient
-  -> custom OpenCodeRpcProtocol
-  -> exact OpenCode JSON-RPC
-  -> server backend WebSocket
-  + validated llm.request Stream
-```
-
-The custom protocol is necessary because OpenCode does not currently speak Effect's stock socket dialect. That dialect can emit protocol headers, trace metadata, ping/pong, acknowledgements, interruption, chunks, and Effect cause envelopes that the existing OpenCode dispatchers do not understand.
-
-The adapter owns only the compatibility boundary: request IDs, exact framing, response correlation, and translation of connection or JSON-RPC failures into typed client failures. Interruption stops waiting locally, but it cannot send Effect's interruption frame to the unchanged OpenCode peer.
-
-The backend's `llm.request` messages are unsolicited OpenCode notifications rather than Effect RPC stream frames. The backend connector validates those notifications and exposes them as a separate Effect `Stream`; ordinary `llm.attach`, `llm.chunk`, `llm.finish`, and `llm.disconnect` calls continue through the generated `BackendRpcs` client.
-
-## A follow-up can move the source of truth into OpenCode
-
-The custom protocol lets Drive adopt Effect RPC without modifying OpenCode V2. It is an intentional migration boundary, not the desired permanent ownership model.
-
-A later coordinated change should extract a lightweight `@opencode-ai/simulation-protocol` package from OpenCode containing the canonical schemas, `RpcGroup`s, protocol version, capability model, and typed compatibility errors. The current `@opencode-ai/simulation` package is private and also contains server, renderer, and font dependencies, so Drive should not depend on that full implementation package.
-
-At that point, OpenCode server handlers and Drive clients consume the same values:
-
-```text
-@opencode-ai/simulation-protocol
-  |-- HandshakeRpc
-  |-- UiRpcs
-  |-- BackendRpcs
-  |-- Frontend schemas
-  `-- Backend schemas
-
-OpenCode -> RpcServer.layer(UiRpcs)
-Drive    -> RpcClient.make(UiRpcs)
-```
-
-The follow-up should:
-
-- Align OpenCode and Drive on one Effect version before sharing unstable RPC types.
-- Replace OpenCode's manual frontend and backend dispatchers with `RpcServer` and the stock Effect WebSocket protocol.
-- Replace Drive's custom compatibility protocol with the stock `RpcClient` socket protocol.
-- Model backend request delivery as a real streaming RPC instead of `llm.attach` plus unsolicited `llm.request` notifications.
-- Add an explicit application-level protocol version and capability handshake.
-
-The handshake can first be requested in the launch descriptor and then verified through a typed `simulation.handshake` RPC after the WebSocket opens. It should confirm the endpoint role, protocol version, optional capabilities, and running OpenCode version. This work is not a prerequisite for `OpenCodeDriver.make(...)`.
-
-The private Unix control socket used by detached CLI instances can use native Effect RPC because both peers belong to Drive. That control plane remains outside `OpenCodeDriver.make(...)`.
-
-## The library and detached CLI have different outer ownership
-
-The library constructor owns one ephemeral run in the caller's scope. It does not register a global instance name or open a Unix control socket.
-
-The detached CLI adds an outer owner around the same core resources:
-
-```text
-Detached owner
-|-- InstanceRegistry lease
-|-- Effect RPC control server
-|-- lifecycle command queue
-`-- OpenCodeDriver scope
-```
-
-This keeps registry persistence, remote restart, and daemon ownership out of ordinary library use.
-
-## Typed settlement must happen before infallible cleanup
-
-Scope finalizers are appropriate for cleanup that cannot fail in the typed channel. Existing Drive scripts also enforce expected completion rules:
-
-- Every queued LLM response must be consumed.
-- Unexpected LLM requests fail the run.
-- Output after a terminal event fails the run.
-- Recording completion can fail.
-
-Those checks must run as a normal Effect before the resource scope closes. They must not be converted into defects inside `acquireRelease` finalizers. The final script-level bracket that runs user code, settles LLM and recording work, and then closes resources must use `Effect.acquireUseRelease` or an equivalent explicit bracket.
-
-The exact public spelling of that bracket is intentionally left out of the settled API document until it has a call site that preserves the agreed ergonomics.
-
-## Implementation proceeds from pure contracts to ownership
-
-1. Align Drive's Effect packages with the selected local `effect-smol` version.
-2. Add pure `Llm` schemas, the manual output union, and constructors.
-3. Add exact JSON-RPC characterization tests for all current UI and backend methods.
-4. Define Drive-local UI and backend `RpcGroup`s over the canonical schemas.
-5. Build the scoped WebSocket connection and custom `OpenCodeRpcProtocol`.
-6. Replace Drive's manual clients with generated `RpcClient`s.
-7. Add scoped Effect process ownership and `OpenCodeProject.make`.
-8. Add `OpenCodeServer.make` with shared backend and LLM control.
-9. Add `OpenCodeClient.make` and the primary UI path.
-10. Compose `OpenCodeDriver.make` and its typed settlement bracket.
-11. Add `server.clients.make(...)` for additional clients.
-12. Preserve every existing CLI command and the `start --script` runner through the migration.
-
-After the library migration is complete, a default-exported Effect runner such as `opencode-drive run` can be added as a separate additive product slice. It must not replace `start --script`, direct `send`, or the other existing entry points.
-
-The first implementation slice is the pure `Llm` module. The first runtime slice is one primary client driven through `OpenCodeDriver.make(...)` with complete scoped cleanup.
+- `opencode-drive`: Effect driver, scripts, project contracts, LLM constructors.
+- `opencode-drive/driver`: complete Effect driver namespace.
+- `opencode-drive/script`: `defineScript` and script contracts.
+- `opencode-drive/client`: Promise simulation transport.
+- `opencode-drive/llm`: pure LLM output constructors and schemas.
+- `opencode-drive/recording`: recording decode, replay, and export utilities.

@@ -1,10 +1,10 @@
 import * as Effect from "effect/Effect"
 import { OpenCodeDriver } from "../src/index.js"
 import type {
-  Client,
-  Clients,
   Frontend,
   Project,
+  Tui,
+  Tuis,
   Ui,
 } from "../src/index.js"
 import type { ScriptContext } from "../src/script/types.js"
@@ -18,14 +18,14 @@ type Equal<Left, Right> =
 type Assert<Value extends true> = Value
 
 export type ScriptUiIsCanonical = Assert<Equal<ScriptContext["ui"], Ui>>
-export type ScriptClientIsCanonical = Assert<
-  Equal<ScriptContext["client"], Client>
+export type ScriptTuiIsCanonical = Assert<
+  Equal<ScriptContext["tui"], Tui>
 >
-export type ScriptClientsAreCanonical = Assert<
-  Equal<ScriptContext["clients"], Clients>
+export type ScriptTuisAreCanonical = Assert<
+  Equal<ScriptContext["tuis"], Tuis>
 >
-export type LaunchedClientIsCanonical = Assert<
-  Equal<Effect.Success<ReturnType<Clients["launch"]>>, Client>
+export type LaunchedTuiIsCanonical = Assert<
+  Equal<Effect.Success<ReturnType<Tuis["launch"]>>, Tui>
 >
 export type ResizeIsCanonicalAction = Assert<
   Equal<

@@ -1,6 +1,6 @@
 import type * as OpenCodeServer from "./server.js"
 
-/** Live control over the simulated model shared by every connected client. */
+/** Live control over the simulated model shared by every connected TUI. */
 export interface Llm {
   readonly queue: OpenCodeServer.Server["llm"]["queue"]
   readonly send: OpenCodeServer.Server["llm"]["send"]

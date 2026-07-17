@@ -22,11 +22,11 @@ export type ScopedIsRunnable = Assert<Equal<Effect.Services<Scoped>, never>>
 
 declare const driver: OpenCodeDriver.Driver
 export type PrimaryUiIsCanonical = Assert<
-  Equal<typeof driver.ui, typeof driver.client.ui>
+  Equal<typeof driver.ui, typeof driver.tui.ui>
 >
 export type AdditionalUiIsCanonical = Assert<
   Equal<
-    Effect.Success<ReturnType<typeof driver.clients.launch>>["ui"],
+    Effect.Success<ReturnType<typeof driver.tuis.launch>>["ui"],
     OpenCodeDriver.Ui
   >
 >

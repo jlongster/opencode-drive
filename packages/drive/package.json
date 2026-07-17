@@ -38,6 +38,7 @@
     "src/instance",
     "src/llm",
     "src/log.ts",
+    "src/project.ts",
     "src/recording",
     "src/script",
     "src/simulation",

@@ -1,15 +1,24 @@
 import { join } from "node:path"
 import { NodeFileSystem } from "@effect/platform-node"
-import { OpenCode, type OpenCodeClient } from "@opencode-ai/client/effect"
+import {
+  OpenCode as OpenCodeService,
+  type OpenCodeClient,
+} from "@opencode-ai/client/effect"
 import * as Service from "@opencode-ai/client/effect/service"
 import * as Effect from "effect/Effect"
 import * as FileSystem from "effect/FileSystem"
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
+import {
+  FetchHttpClient,
+  HttpClient,
+  HttpClientRequest,
+} from "effect/unstable/http"
 import { error, type OpenCodeDriverError } from "./error.js"
 
-export type Api = OpenCodeClient
+export type OpenCode = OpenCodeClient
 
-const makeWithServices = Effect.fn("OpenCodeApi.make")(function* (artifacts: string) {
+const makeWithServices = Effect.fn("OpenCode.make")(function* (
+  artifacts: string,
+) {
   const state = join(artifacts, "home", ".local", "state", "opencode")
   const fs = yield* FileSystem.FileSystem
   const discovered = yield* fs.readDirectory(state).pipe(
@@ -30,7 +39,7 @@ const makeWithServices = Effect.fn("OpenCodeApi.make")(function* (artifacts: str
   }
   if (endpoint === undefined)
     return yield* Effect.fail(
-      error("api.connect", "OpenCode service registration was not found"),
+      error("opencode.connect", "OpenCode service registration was not found"),
     )
 
   return yield* Effect.gen(function* () {
@@ -43,7 +52,7 @@ const makeWithServices = Effect.fn("OpenCodeApi.make")(function* (artifacts: str
         ),
       ),
     )
-    const client = endpoint.auth === undefined
+    const http = endpoint.auth === undefined
       ? located
       : located.pipe(
           HttpClient.mapRequest(
@@ -53,14 +62,16 @@ const makeWithServices = Effect.fn("OpenCodeApi.make")(function* (artifacts: str
             ),
           ),
         )
-    return yield* OpenCode.make({ baseUrl: endpoint.url }).pipe(
-      Effect.provideService(HttpClient.HttpClient, client),
+    return yield* OpenCodeService.make({ baseUrl: endpoint.url }).pipe(
+      Effect.provideService(HttpClient.HttpClient, http),
     )
   }).pipe(
     Effect.provide(FetchHttpClient.layer),
-    Effect.mapError((cause) => error("api.connect", cause)),
+    Effect.mapError((cause) => error("opencode.connect", cause)),
   )
 })
 
-export const make = (artifacts: string): Effect.Effect<Api, OpenCodeDriverError> =>
+export const make = (
+  artifacts: string,
+): Effect.Effect<OpenCode, OpenCodeDriverError> =>
   makeWithServices(artifacts).pipe(Effect.provide(NodeFileSystem.layer))

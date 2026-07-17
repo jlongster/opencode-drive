@@ -34,7 +34,7 @@ the module for simulation control. `opencode-drive check` validates Effect-only
 `OpenCodeDriver.use(run)` is the zero-configuration top-level interface;
 `OpenCodeDriver.use(options, run)` configures the same lifecycle. Both acquire
 the driver returned by `make`, run the program, validate queued LLM work,
-finish recordings, close clients, export videos, and then release the server
+finish recordings, close TUIs, export videos, and then release the server
 and project scope.
 
 `OpenCodeDriver.useReport(run)` and `useReport(options, run)` have the same lifecycle semantics and
@@ -60,7 +60,7 @@ const program = OpenCodeDriver.use(
     config: {
       autoupdate: false,
     },
-    client: {
+    tui: {
       viewport: {
         cols: 96,
         rows: 32,
@@ -82,7 +82,7 @@ const program = OpenCodeDriver.use(
 NodeRuntime.runMain(program)
 ```
 
-`OpenCodeDriver.make(...)` remains the lower-level scoped constructor for programs that need to control settlement explicitly. Call `driver.settle()` before leaving its scope. `settle()` is terminal: it rejects new clients and LLM responses, validates queued work, stops clients, and exports recordings.
+`OpenCodeDriver.make(...)` remains the lower-level scoped constructor for programs that need to control settlement explicitly. Call `driver.settle()` before leaving its scope. `settle()` is terminal: it rejects new TUIs and LLM responses, validates queued work, stops TUIs, and exports recordings.
 
 ```ts
 const program = Effect.scoped(
@@ -96,17 +96,27 @@ const program = Effect.scoped(
 
 Capture font size is not part of this interface. The current renderer uses a fixed 16px font in 10-by-20 cells; the terminal catalog's `OPENCODE_DRIVE_FONT_SIZE=14` environment variable is currently ignored.
 
-## The driver has one primary client and optional additional clients
+The generated SDK client is `opencode`. The primary frontend process is `tui`,
+its UI is also available directly as `ui`, and `tuis` launches more frontend
+processes:
 
-The `client` section configures the primary frontend created by `make`. Its UI is exposed directly as `ui` for the common case.
+```ts
+const health = yield* driver.opencode.health.get()
+const frame = yield* driver.tui.ui.capture()
+const secondary = yield* driver.tuis.launch()
+```
 
-Additional clients connect to the same server and expose their own UI:
+## The driver has one primary TUI and optional additional TUIs
+
+The `tui` section configures the primary frontend created by `make`. Its UI is exposed directly as `ui` for the common case.
+
+Additional TUIs connect to the same server and expose their own UI:
 
 ```ts
 const program = Effect.scoped(
   Effect.gen(function* () {
     const oc = yield* OpenCodeDriver.make({
-      client: {
+      tui: {
         viewport: {
           cols: 96,
           rows: 32,
@@ -114,7 +124,7 @@ const program = Effect.scoped(
       },
     })
 
-    const secondary = yield* oc.clients.make({
+    const secondary = yield* oc.tuis.launch({
       viewport: {
         cols: 120,
         rows: 40,
@@ -122,16 +132,16 @@ const program = Effect.scoped(
       recording: true,
     })
 
-    yield* oc.ui.submit("Prompt from the primary client")
-    yield* secondary.ui.submit("Prompt from the secondary client")
+    yield* oc.ui.submit("Prompt from the primary TUI")
+    yield* secondary.ui.submit("Prompt from the secondary TUI")
     yield* oc.settle()
   }),
 )
 ```
 
-`clients.make(options)` generates an identity. Use `clients.launch(name,
-options)` when a stable name is useful for logs, recordings, or closing and
-relaunching the same client.
+`tuis.launch(options)` generates an identity. Pass a name as the first argument
+when a stable identity is useful for logs, recordings, or closing and
+relaunching the same TUI: `tuis.launch(name, options)`.
 
 ```text
                      ╭────────────────╮
@@ -145,18 +155,18 @@ relaunching the same client.
              ╰───────────────────────────────╮                │
              ▼                               ▼                │
     ╭────────────────╮            ╭────────────────────╮      │
-    │ Primary Client │◀───────────│ Additional Clients │◀─────╯
+    │  Primary TUI   │◀───────────│  Additional TUIs   │◀─────╯
     ╰────────┬───────╯            ╰──────────┬─────────╯
              ╰───╮                    ╭──────╯
                  ▼                    ▼
               ╭────╮            ╭───────────╮
-              │ ui │            │ client.ui │
+              │ ui │            │  tui.ui   │
               ╰────╯            ╰───────────╯
 ```
 
 ## Common scripts destructure UI and LLM control
 
-Scripts that only need the primary client should normally destructure the driver:
+Scripts that only need the primary TUI should normally destructure the driver:
 
 ```ts
 const driver = yield* OpenCodeDriver.make()
@@ -171,11 +181,11 @@ yield* ui.waitFor("Hello from the simulated model.")
 yield* driver.settle()
 ```
 
-Keep the aggregate value only when driver-wide capabilities such as `clients` are needed:
+Keep the aggregate value only when driver-wide capabilities such as `tuis` are needed:
 
 ```ts
 const oc = yield* OpenCodeDriver.make()
-const secondary = yield* oc.clients.make()
+const secondary = yield* oc.tuis.launch()
 
 yield* oc.ui.screenshot("primary")
 yield* secondary.ui.screenshot("secondary")
@@ -305,7 +315,7 @@ Responses without an explicit terminal output finish with `"stop"`. Title reques
 
 `defineScript` does not provide a Promise adapter. Its `setup` and `run`
 callbacks return Effects, as do operations on `fs`, `ui`, `llm`, `server`,
-and `clients`. Compose script operations in the same runtime with
+and `tuis`. Compose script operations in the same runtime with
 `yield*` or Effect operators.
 
 ### Primary UI
@@ -340,22 +350,22 @@ Predicates passed to `ui.waitFor` may return a boolean or an Effect.
 Capability methods expose typed error channels. Concrete tagged errors are
 available from the `Errors` namespace.
 
-### Additional client
+### Additional TUI
 
 ```ts
 yield* server.launch()
-const alice = yield* clients.launch("alice")
-const bob = yield* clients.launch("bob")
+const alice = yield* tuis.launch("alice")
+const bob = yield* tuis.launch("bob")
 
 yield* alice.ui.submit("Hello from Alice")
 yield* bob.ui.screenshot("bob-view")
 ```
 
-### Client configuration
+### TUI configuration
 
 ```ts
 export default defineScript({
-  client: {
+  tui: {
     viewport: {
       cols: 118,
       rows: 34,
@@ -374,15 +384,16 @@ shim.
 
 - `OpenCodeDriver.use(run)` and `use(options, run)` are the safe top-level brackets and perform typed settlement.
 - `OpenCodeDriver.make(options)` is the primary scoped constructor.
+- `opencode` is the generated OpenCode SDK client.
 - Programs that call `make` directly call terminal `driver.settle()` before leaving the scope.
 - Direct library programs run the same Effect without any export convention.
-- The `client` section configures one primary client.
-- The primary client's UI is exposed as `ui` and `oc.ui`.
+- The `tui` section configures one primary TUI.
+- The primary TUI's UI is exposed as `ui` and `oc.ui`.
 - The common case destructures `{ ui, llm }`.
-- `oc.clients.make(options?)` creates additional clients on the same server.
-- `oc.clients.launch(name, options?)` creates a client with a stable identity.
-- Additional clients expose their UI as `client.ui`.
-- Driver and script clients share the same `Client`, `Ui`, and option types.
+- `oc.tuis.launch(options?)` creates an additional TUI with a generated identity.
+- `oc.tuis.launch(name, options?)` creates a TUI with a stable identity.
+- Additional TUIs expose their UI as `tui.ui`.
+- Drivers and scripts share the same `Tui`, `Tuis`, `Ui`, and option types.
 - `Llm` exposes pure constructors over manually composed Effect Schemas.
 - Raw schema-compatible LLM output objects remain accepted.
 - One `llm.queue(...)` call describes one future model response.

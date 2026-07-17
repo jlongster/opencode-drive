@@ -4,7 +4,7 @@ import { defineScript, Llm } from "opencode-drive"
 export default defineScript({
   launch: "manual",
 
-  run: ({ server, clients, llm }) =>
+  run: ({ server, tuis, llm }) =>
     Effect.gen(function* () {
       yield* server.launch()
 
@@ -14,8 +14,8 @@ export default defineScript({
 
       const [alice, bob] = yield* Effect.all(
         [
-          clients.launch("alice", { recording: true }),
-          clients.launch("bob", { recording: true }),
+          tuis.launch("alice", { recording: true }),
+          tuis.launch("bob", { recording: true }),
         ],
         { concurrency: "unbounded" },
       )

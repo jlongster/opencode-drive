@@ -11,7 +11,7 @@ const fakeOpenCode = [
   resolve("test", "fixtures", "fake-opencode.ts"),
 ]
 
-it.live("stops a client while its readiness check is pending", () =>
+it.live("stops a TUI while its readiness check is pending", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const artifacts = yield* Effect.promise(() => initializeInstance())
@@ -26,7 +26,7 @@ it.live("stops a client while its readiness check is pending", () =>
       })
 
       yield* instance.launchServer
-      const launch = yield* instance.launchClient("pending").pipe(
+      const launch = yield* instance.launchTui("pending").pipe(
         Effect.exit,
         Effect.forkChild,
       )

@@ -1,8 +1,7 @@
 import { lstat, mkdir, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path"
 import * as Effect from "effect/Effect"
-import { FileSystemError } from "./errors.js"
-import type { ProjectFileSystem } from "./types.js"
+import { FileSystemError, type ProjectFileSystem } from "../project.js"
 
 interface FileSystemOptions {
   readonly git?: boolean

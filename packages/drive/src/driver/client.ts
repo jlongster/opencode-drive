@@ -13,12 +13,12 @@ import { error, type OpenCodeDriverError } from "./error.js"
 import * as OpenCodeUi from "./ui.js"
 import * as SharedEffect from "./shared.js"
 
-export interface Options {
+export interface TuiOptions {
   readonly recording?: boolean
   readonly viewport?: Frontend.ResizeParams
 }
 
-export interface Client {
+export interface Tui {
   readonly ui: OpenCodeUi.Ui
   readonly recording?: Recording
   readonly close: () => Effect.Effect<void>
@@ -33,7 +33,7 @@ export interface Recording {
   >
 }
 
-interface ManagedClient extends Client {
+interface ManagedTui extends Tui {
   readonly compatibility: SimulationConnector.EndpointCompatibility
   readonly _exitCode: Effect.Effect<number, OpenCodeDriverError>
   readonly _recording?: {
@@ -48,32 +48,32 @@ interface ManagedClient extends Client {
   }
 }
 
-export const make = Effect.fn("OpenCodeClient.make")(function* (
+export const make = Effect.fn("OpenCodeTui.make")(function* (
   instance: OpenCodeInstance.Instance,
   visible: boolean,
   identity: string,
-  options: Options,
+  options: TuiOptions,
   connector: SimulationConnector.Interface,
   compatibility?: SimulationConnector.CompatibilityPolicy,
 ) {
   if (visible && options.recording)
     return yield* Effect.fail(
       error(
-        "client.launch",
-        "recording requires a headless OpenCode client",
+        "tui.launch",
+        "recording requires a headless OpenCode TUI",
       ),
     )
   const launched = yield* Effect.acquireRelease(
-    instance.launchClient(identity, {
+    instance.launchTui(identity, {
       record: options.recording,
       viewport: options.viewport,
     }).pipe(
-      Effect.mapError((cause) => error("client.launch", cause)),
+      Effect.mapError((cause) => error("tui.launch", cause)),
     ),
     (client) =>
       client.close.pipe(
         Effect.catchCause((cause) =>
-          Effect.logError("OpenCode client cleanup failed", cause),
+          Effect.logError("OpenCode TUI cleanup failed", cause),
         ),
       ),
   )
@@ -85,7 +85,7 @@ export const make = Effect.fn("OpenCodeClient.make")(function* (
   })
 
   const recording = launched.recording
-  let managedRecording: ManagedClient["_recording"]
+  let managedRecording: ManagedTui["_recording"]
   if (recording !== undefined) {
     const finishTimeline = yield* SharedEffect.make(
       Effect.gen(function* () {
@@ -116,7 +116,7 @@ export const make = Effect.fn("OpenCodeClient.make")(function* (
       finishTimeline.pipe(
         Effect.asVoid,
         Effect.catchCause((cause) =>
-          Effect.logError("OpenCode client recording finalization failed", cause),
+          Effect.logError("OpenCode TUI recording finalization failed", cause),
         ),
       ),
     )
@@ -127,7 +127,7 @@ export const make = Effect.fn("OpenCodeClient.make")(function* (
     compatibility: connection.compatibility,
     close: () => Effect.void,
     _exitCode: launched.process.exitCode.pipe(
-      Effect.mapError((cause) => error("client.exit", cause)),
+      Effect.mapError((cause) => error("tui.exit", cause)),
     ),
     ...(recording === undefined || managedRecording === undefined
       ? {}
@@ -139,40 +139,33 @@ export const make = Effect.fn("OpenCodeClient.make")(function* (
           },
           _recording: managedRecording,
         }),
-  } satisfies ManagedClient
+  } satisfies ManagedTui
 })
 
-export interface Clients {
-  readonly make: (
-    options?: Options,
-  ) => Effect.Effect<
-    Client,
-    | OpenCodeDriverError
-    | SimulationConnector.SimulationCompatibilityError
-    | OpenCodeUi.OperationError
-    | OpenCodeUi.UiPredicateError
-    | OpenCodeUi.UiWaitOptionsError
-  >
-  /** Launches a named client. The name is released when that client closes. */
-  readonly launch: (
-    name: string,
-    options?: Options,
-  ) => Effect.Effect<
-    Client,
-    | OpenCodeDriverError
-    | SimulationConnector.SimulationCompatibilityError
-    | OpenCodeUi.OperationError
-    | OpenCodeUi.UiPredicateError
-    | OpenCodeUi.UiWaitOptionsError
-  >
+export interface Tuis {
+  readonly launch: {
+    (options?: TuiOptions): Effect.Effect<Tui, TuiLaunchError>
+    /** Launches a named TUI. The name is released when that TUI closes. */
+    (
+      name: string,
+      options?: TuiOptions,
+    ): Effect.Effect<Tui, TuiLaunchError>
+  }
 }
+
+export type TuiLaunchError =
+  | OpenCodeDriverError
+  | SimulationConnector.SimulationCompatibilityError
+  | OpenCodeUi.OperationError
+  | OpenCodeUi.UiPredicateError
+  | OpenCodeUi.UiWaitOptionsError
 
 export interface UnexpectedExit {
   readonly name: string
   readonly status: number
 }
 
-export interface Control extends Clients {
+export interface Control extends Tuis {
   readonly compatibility: Effect.Effect<
     ReadonlyArray<SimulationConnector.EndpointCompatibility>
   >
@@ -183,18 +176,18 @@ export interface Control extends Clients {
   >
 }
 
-export const makeClients = Effect.fn("OpenCodeClients.make")(function* (
+export const makeTuis = Effect.fn("OpenCodeTuis.make")(function* (
   instance: OpenCodeInstance.Instance,
   visible: boolean,
   connector: SimulationConnector.Interface,
   compatibilityPolicy?: SimulationConnector.CompatibilityPolicy,
 ) {
   const parentScope = yield* Scope.Scope
-  const clientsScope = yield* Scope.fork(parentScope, "parallel")
+  const tuisScope = yield* Scope.fork(parentScope, "parallel")
   const lock = yield* Semaphore.make(1)
   let closed = false
   let recordings: ReadonlyArray<
-    NonNullable<ManagedClient["_recording"]>
+    NonNullable<ManagedTui["_recording"]>
   > = []
   const nextIdentity = yield* Ref.make(0)
   let active: ReadonlyMap<string, Scope.Scope> = new Map()
@@ -203,21 +196,21 @@ export const makeClients = Effect.fn("OpenCodeClients.make")(function* (
     SimulationConnector.EndpointCompatibility
   > = []
 
-  const launch = Effect.fn("OpenCodeClients.launch")(function* (
+  const launchNamed = Effect.fn("OpenCodeTuis.launchNamed")(function* (
     identity: string,
-    options: Options = {},
+    options: TuiOptions = {},
   ) {
     return yield* lock.withPermit(
       Effect.gen(function* () {
         if (closed)
           return yield* Effect.fail(
-            error("client.make", "OpenCode clients are closed"),
+            error("tui.launch", "OpenCode TUIs are closed"),
           )
         if (active.has(identity))
           return yield* Effect.fail(
-            error("client.launch", `client "${identity}" is already connected`),
+            error("tui.launch", `TUI "${identity}" is already connected`),
           )
-        const scope = yield* Scope.fork(clientsScope)
+        const scope = yield* Scope.fork(tuisScope)
         active = new Map(active).set(identity, scope)
         const client = yield* make(
           instance,
@@ -269,26 +262,37 @@ export const makeClients = Effect.fn("OpenCodeClients.make")(function* (
             ),
           ),
           Effect.catchCause(() => Effect.void),
-          Effect.forkIn(clientsScope),
+          Effect.forkIn(tuisScope),
         )
-        const publicClient: Client = {
+        const publicTui: Tui = {
           ui: client.ui,
           ...(client.recording === undefined
             ? {}
             : { recording: client.recording }),
           close: () => release,
         }
-        return publicClient
+        return publicTui
       }),
     )
   })
 
-  const makeClient = Effect.fn("OpenCodeClients.makeClient")((
-    options: Options = {},
-  ) =>
-    Ref.getAndUpdate(nextIdentity, (value) => value + 1).pipe(
-      Effect.flatMap((identity) => launch(`client-${identity}`, options)),
-    ))
+  function launch(options?: TuiOptions): Effect.Effect<Tui, TuiLaunchError>
+  function launch(
+    name: string,
+    options?: TuiOptions,
+  ): Effect.Effect<Tui, TuiLaunchError>
+  function launch(
+    nameOrOptions: string | TuiOptions = {},
+    options: TuiOptions = {},
+  ) {
+    return typeof nameOrOptions === "string"
+      ? launchNamed(nameOrOptions, options)
+      : Ref.getAndUpdate(nextIdentity, (value) => value + 1).pipe(
+          Effect.flatMap((identity) =>
+            launchNamed(String(identity), nameOrOptions),
+          ),
+        )
+  }
 
   const finishTimelines = yield* SharedEffect.make(
     Effect.gen(function* () {
@@ -302,12 +306,12 @@ export const makeClients = Effect.fn("OpenCodeClients.make")(function* (
         Effect.exit(recording.finishTimeline), {
         concurrency: "unbounded",
       })
-      yield* Scope.close(clientsScope, Exit.void)
+      yield* Scope.close(tuisScope, Exit.void)
       return { active, finished }
     }),
   )
 
-  const settle = Effect.fn("OpenCodeClients.settle")(function* () {
+  const settle = Effect.fn("OpenCodeTuis.settle")(function* () {
     const { active, finished } = yield* finishTimelines
     const exported = yield* Effect.forEach(active, (recording, index) =>
       Exit.isSuccess(finished[index]!)
@@ -339,7 +343,6 @@ export const makeClients = Effect.fn("OpenCodeClients.make")(function* (
   })
 
   return {
-    make: makeClient,
     launch,
     unexpectedExit: Deferred.await(unexpectedExit),
     compatibility: Effect.sync(() => compatibility),
@@ -347,4 +350,4 @@ export const makeClients = Effect.fn("OpenCodeClients.make")(function* (
   } satisfies Control
 })
 
-export * as OpenCodeClient from "./client.js"
+export * as OpenCodeTui from "./client.js"

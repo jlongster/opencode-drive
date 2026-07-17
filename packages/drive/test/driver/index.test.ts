@@ -25,19 +25,19 @@ it.live("runs and settles a complete scoped driver", () =>
           nested: { declared: true, winner: "declared" },
           items: ["declared"],
         },
-        tui: { theme: { declared: true } },
-        setup: ({ config, tui }) =>
+        tuiConfig: { theme: { declared: true } },
+        setup: ({ config, tuiConfig }) =>
           Effect.sync(() => {
             config.nested = {
               ...config.nested as Record<string, boolean | string>,
               winner: "setup",
             }
-            tui.theme = {
-              ...tui.theme as Record<string, boolean>,
+            tuiConfig.theme = {
+              ...tuiConfig.theme as Record<string, boolean>,
               setup: true,
             }
           }),
-        client: {
+        tui: {
           recording: true,
           viewport: { cols: 96, rows: 32 },
         },
@@ -45,24 +45,24 @@ it.live("runs and settles a complete scoped driver", () =>
       },
       (driver) =>
         Effect.gen(function* () {
-          expect(yield* driver.api.health.get()).toMatchObject({
+          expect(yield* driver.opencode.health.get()).toMatchObject({
             healthy: true,
             version: "test",
           })
-          expect(yield* driver.api.server.get()).toEqual({ urls: [] })
+          expect(yield* driver.opencode.server.get()).toEqual({ urls: [] })
           yield* driver.llm.queue(
             Llm.text("library response", { delay: 0, chunkSize: 100 }),
           )
           yield* driver.ui.submit("hello from library")
           yield* driver.ui.waitFor("hello from library")
-          const secondary = yield* driver.clients.make({
+          const secondary = yield* driver.tuis.launch({
             viewport: { cols: 120, rows: 40 },
           })
           yield* secondary.ui.submit("hello from secondary")
           yield* secondary.ui.waitFor("hello from secondary")
           return {
             artifacts: driver.artifacts,
-            recording: driver.client.recording?.path,
+            recording: driver.tui.recording?.path,
           }
         }),
     )
@@ -146,6 +146,21 @@ it.live("rejects a setup callback that does not return an Effect", () =>
   }),
 )
 
+it.live("rejects recording for a visible TUI", () =>
+  Effect.gen(function* () {
+    const failure = yield* OpenCodeDriver.make({
+      tui: { recording: true },
+      opencode: { command: fakeOpenCode, visible: true },
+    }).pipe(Effect.scoped, Effect.flip)
+
+    expect(failure).toMatchObject({
+      _tag: "OpenCodeDriverError",
+      operation: "tui.launch",
+      message: "recording requires a headless OpenCode TUI",
+    })
+  }),
+)
+
 it.live("supports explicit terminal settlement with make", () =>
   Effect.gen(function* () {
     let artifacts = ""
@@ -168,10 +183,10 @@ it.live("supports explicit terminal settlement with make", () =>
           ],
           recordings: [],
         })
-        const error = yield* driver.clients.make().pipe(Effect.flip)
+        const error = yield* driver.tuis.launch().pipe(Effect.flip)
         expect(error).toMatchObject({
           _tag: "OpenCodeDriverError",
-          operation: "client.make",
+          operation: "tui.launch",
         })
       }),
     )
@@ -240,12 +255,12 @@ it.live("settles and exports recordings when the user program fails", () =>
       OpenCodeDriver.use(
         {
           keepArtifacts: true,
-          client: { recording: true },
+          tui: { recording: true },
           opencode: { command: fakeOpenCode },
         },
         (driver) => {
           artifacts = driver.artifacts
-          recording = driver.client.recording?.path ?? ""
+          recording = driver.tui.recording?.path ?? ""
           return Effect.fail("user program failed")
         },
       ),
@@ -278,7 +293,7 @@ it.live("preserves user and settlement failures", () =>
       OpenCodeDriver.use(
         {
           keepArtifacts: true,
-          client: { recording: true },
+          tui: { recording: true },
           opencode: { command: fakeOpenCode },
         },
         (driver) =>
@@ -366,7 +381,7 @@ it.live("interrupts use when the backend disconnects", () =>
   }),
 )
 
-it.live("closes clients and exports recordings after LLM settlement fails", () =>
+it.live("closes TUIs and exports recordings after LLM settlement fails", () =>
   Effect.gen(function* () {
     let artifacts = ""
     let recording = ""
@@ -374,11 +389,11 @@ it.live("closes clients and exports recordings after LLM settlement fails", () =
       Effect.gen(function* () {
         const driver = yield* OpenCodeDriver.make({
           keepArtifacts: true,
-          client: { recording: true },
+          tui: { recording: true },
           opencode: { command: fakeOpenCode },
         })
         artifacts = driver.artifacts
-        recording = driver.client.recording?.path ?? ""
+        recording = driver.tui.recording?.path ?? ""
         yield* driver.llm.queue(
           Llm.finish(),
           Llm.text("too late", { delay: 0 }),
@@ -391,8 +406,8 @@ it.live("closes clients and exports recordings after LLM settlement fails", () =
         })
         expect(yield* exists(recording)).toBe(true)
         expect(
-          (yield* driver.clients.make().pipe(Effect.flip)).operation,
-        ).toBe("client.make")
+          (yield* driver.tuis.launch().pipe(Effect.flip)).operation,
+        ).toBe("tui.launch")
       }),
     )
 
@@ -441,7 +456,7 @@ it.live("force kills unresponsive processes and preserves their logs", () =>
     ).toContain("fake opencode service stdout")
     expect(
       yield* Effect.promise(() =>
-        readFile(`${artifacts}/logs/client-client-0.stderr.log`, "utf8"),
+        readFile(`${artifacts}/logs/tui-0.stderr.log`, "utf8"),
       ),
     ).toContain("fake opencode client stderr")
     expect(elapsed).toBeGreaterThanOrEqual(900)

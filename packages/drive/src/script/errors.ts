@@ -1,17 +1,9 @@
-import * as Schema from "effect/Schema"
 import { RpcClientError as RpcClientErrors } from "effect/unstable/rpc"
 
 export const RpcClientError = RpcClientErrors.RpcClientError
 export type RpcClientError = RpcClientErrors.RpcClientError
 
-export class FileSystemError extends Schema.TaggedErrorClass<FileSystemError>()(
-  "FileSystemError",
-  {
-    path: Schema.String,
-    cause: Schema.Defect(),
-    message: Schema.String,
-  },
-) {}
+export { FileSystemError } from "../project.js"
 
 export { OpenCodeDriverError } from "../driver/error.js"
 export { LlmControllerError, LlmModeError } from "../driver/llm-controller.js"

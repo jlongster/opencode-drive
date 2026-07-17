@@ -45,13 +45,13 @@ describe("instance configuration", () => {
         theme: { declared: true },
         items: ["declared"],
       },
-      setup({ config, tui }) {
+      setup({ config, tuiConfig }) {
         return Effect.sync(() => {
           config.nested = {
             ...(config.nested as Record<string, boolean | string>),
             winner: "setup",
           }
-          tui.items = ["setup"]
+          tuiConfig.items = ["setup"]
         })
       },
     }))
@@ -99,11 +99,11 @@ describe("instance configuration", () => {
       artifacts: root,
       config,
       tui,
-      setup({ config, tui }) {
+      setup({ config, tuiConfig }) {
         return Effect.sync(() => {
           const nested = config.nested as Record<string, string>
           const items = config.items as Array<string>
-          const keybinds = tui.keybinds as Record<string, string>
+          const keybinds = tuiConfig.keybinds as Record<string, string>
           nested.value = "setup"
           items.push("setup")
           keybinds.app_exit = "ctrl+x"

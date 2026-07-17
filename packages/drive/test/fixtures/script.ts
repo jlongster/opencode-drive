@@ -6,7 +6,7 @@ export default defineScript({
   config: {
     test: { declared: true },
   },
-  tui: {
+  tuiConfig: {
     test: { declared: true },
   },
   project: {
@@ -15,11 +15,11 @@ export default defineScript({
       "src/seeded.ts": "export const seeded = true\n",
     },
   },
-  setup: ({ fs, config, tui }) =>
+  setup: ({ fs, config, tuiConfig }) =>
     Effect.gen(function* () {
       config.autoupdate = false
       config.test = { ...config.test as Record<string, boolean>, setup: true }
-      tui.test = { ...tui.test as Record<string, boolean>, setup: true }
+      tuiConfig.test = { ...tuiConfig.test as Record<string, boolean>, setup: true }
       yield* fs.writeFile("setup-seeded.txt", "included in baseline\n")
     }),
 

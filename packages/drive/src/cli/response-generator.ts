@@ -1,5 +1,5 @@
 import { Backend } from "../client/protocol.js"
-import type { JsonValue } from "../script/types.js"
+import type { JsonValue } from "../project.js"
 
 export const responseTypes = ["text", "reasoning", "tool", "diff"] as const
 export type ResponseType = (typeof responseTypes)[number]

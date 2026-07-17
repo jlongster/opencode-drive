@@ -5,9 +5,11 @@ export * as Errors from "./script/errors.js"
 export * as Tool from "./tool/index.js"
 export { Frontend } from "./client/protocol.js"
 export type {
-  Client,
-  ClientOptions,
-  Clients,
+  OpenCode,
   Recording,
+  Tui,
+  TuiLaunchError,
+  TuiOptions,
+  Tuis,
   Ui,
 } from "./driver/index.js"

@@ -800,7 +800,7 @@ describe("opencode-drive", () => {
     expect(await Bun.file(file).text()).toBe(source)
   }, 60_000)
 
-  test("launches all clients explicitly for a manual UI script", async () => {
+  test("launches all TUIs explicitly for a manual UI script", async () => {
     const root = await temporary()
     const name = "manual-clients-test"
     const child = spawn(
@@ -826,7 +826,7 @@ describe("opencode-drive", () => {
       aliceFrame: { cols: 80, rows: 24 },
       aliceMatches: true,
       bobMatches: true,
-      clientBeforeServer: "launch the script server before launching clients",
+      tuiBeforeServer: "launch the script server before launching TUIs",
       duplicateServer: "the script server has already been launched",
       aliceScreenshot: join(root, "output", "alice.png"),
       bobScreenshot: join(root, "output", "bob.png"),
@@ -834,7 +834,7 @@ describe("opencode-drive", () => {
     expect((await Bun.file(join(artifacts, "launches.txt")).text()).trim().split("\n")).toHaveLength(2)
   }, 60_000)
 
-  test("closes the automatic script's primary client", async () => {
+  test("closes the automatic script's primary TUI", async () => {
     const root = await temporary()
     const child = spawn(
       [
@@ -854,7 +854,7 @@ describe("opencode-drive", () => {
     roots.push(artifactPath(await stderr))
   }, 60_000)
 
-  test("kills and relaunches the scripted server and clients", async () => {
+  test("kills and relaunches the scripted server and TUIs", async () => {
     const root = await temporary()
     const child = spawn(
       [
@@ -893,6 +893,31 @@ describe("opencode-drive", () => {
     expect(await new Response(child.stderr).text()).toContain(
       "script must default-export defineScript(...)",
     )
+  })
+
+  test("does not apply primary TUI options to additional TUIs", async () => {
+    const root = await temporary()
+    const child = spawn(
+      [
+        "start",
+        "--name",
+        "tui-options-test",
+        "--script",
+        fixture("tui-options-script.ts"),
+        "--",
+        process.execPath,
+        fixture("fake-opencode.ts"),
+      ],
+      root,
+    )
+    const stderr = new Response(child.stderr).text()
+    expect(await child.exited).toBe(0)
+    const artifacts = artifactPath(await stderr)
+    roots.push(artifacts)
+    expect(await Bun.file(join(artifacts, "tui-options.json")).json()).toEqual({
+      primaryRecording: true,
+      secondaryRecording: false,
+    })
   })
 
   test.each(["setup", "run"] as const)("rejects a Promise-returning script %s callback", async (callback) => {

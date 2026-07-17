@@ -3,13 +3,13 @@ import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 
 export default defineScript({
-  run: ({ client, ui }) =>
+  run: ({ tui, ui }) =>
     Effect.gen(function* () {
-      yield* client.close()
+      yield* tui.close()
       const closed = Exit.isFailure(yield* Effect.exit(ui.state()))
       if (!closed)
         yield* Effect.fail(
-          new Error("primary client remained connected after client.close()"),
+          new Error("primary TUI remained connected after tui.close()"),
         )
     }),
 })

@@ -80,7 +80,7 @@ opencode-drive run ./drive.ts
 
 `run` type-checks the module before importing it and requires its default export to be an `Effect<unknown, unknown, never>`. It accepts exactly one module path; it does not accept `--command.*` flags or application arguments after `--`.
 
-`OpenCodeDriver.use` is the normal lifecycle boundary. It creates an isolated project, starts the server and primary client, races the program against backend failure, settles queued LLM work, closes all clients, exports recordings, and removes the artifact directory unless `keepArtifacts: true` is set. Settlement failures fail the program.
+`OpenCodeDriver.use` is the normal lifecycle boundary. It creates an isolated project, starts the server and primary TUI, races the program against backend failure, settles queued LLM work, closes all TUIs, exports recordings, and removes the artifact directory unless `keepArtifacts: true` is set. Settlement failures fail the program.
 
 Use `OpenCodeDriver.make` only when explicit settlement is necessary. It requires a scope, and the program must call `driver.settle()` before leaving that scope.
 
@@ -99,15 +99,15 @@ export default OpenCodeDriver.use(
       autoupdate: false,
       username: "Drive",
     },
-    tui: {
+    tuiConfig: {
       theme: "system",
       scroll_speed: 1,
     },
-    setup: ({ fs, config, tui }) =>
+    setup: ({ fs, config, tuiConfig }) =>
       Effect.gen(function* () {
         yield* fs.writeFile("src/setup.ts", "export const ready = true\n")
         config.username = "Setup wins"
-        tui.scroll_speed = 2
+        tuiConfig.scroll_speed = 2
       }),
   },
   ({ ui }) => ui.screenshot("home"),
@@ -117,8 +117,8 @@ export default OpenCodeDriver.use(
 The DSL is applied in this order:
 
 1. `project.files` is written into the isolated project.
-2. `config` and `tui` are deeply merged over `.opencode/opencode.jsonc` and `.opencode/tui.jsonc` fixture values. Objects merge recursively; arrays and scalar values replace existing values.
-3. `setup` runs and may write project files or mutate the merged `config` and `tui` objects. Its mutations take final precedence.
+2. `config` and `tuiConfig` are deeply merged over `.opencode/opencode.jsonc` and `.opencode/tui.jsonc` fixture values. Objects merge recursively; arrays and scalar values replace existing values.
+3. `setup` runs and may write project files or mutate the merged `config` and `tuiConfig` objects. Its mutations take final precedence.
 4. Drive writes both configs as stable, formatted JSON. With `project.git: true`, it creates a repository and commits the complete pre-launch state with fixed Git identity and timestamps.
 
 `fs.writeFile` is rooted inside the simulated project and creates parent directories. `project.git: true` refuses to replace existing Git metadata; omit it when prepared fixtures already include a repository.
@@ -160,10 +160,14 @@ yield* llm.serve((_request, index) =>
 )
 ```
 
-Additional clients share the server and LLM controller:
+Use the capability names literally: `opencode` is the generated OpenCode SDK,
+`tui` is the primary frontend process, `ui` is `tui.ui`, and `tuis` launches
+additional frontend processes.
+
+Additional TUIs share the server and LLM controller:
 
 ```ts
-const secondary = yield* clients.make({
+const secondary = yield* tuis.launch({
   viewport: { cols: 120, rows: 40 },
   recording: true,
 })
@@ -215,8 +219,8 @@ when earlier lines should remain visible.
 
 Use `defineScript` with `start --script` when the workflow must have a stable
 instance name, be visible, rerun on `restart`, or explicitly launch and kill
-its server and clients. `setup` and `run` return Effects. Operations on `fs`,
-`ui`, `llm`, `server`, and `clients` also return Effects; there is no
+its server and TUIs. `setup` and `run` return Effects. Operations on `fs`,
+`ui`, `llm`, `server`, and `tuis` also return Effects; there is no
 Promise API or compatibility shim.
 
 ```ts
@@ -225,7 +229,7 @@ import { defineScript, Llm } from "opencode-drive"
 
 export default defineScript({
   config: { autoupdate: false },
-  tui: { theme: "system" },
+  tuiConfig: { theme: "system" },
   project: {
     git: true,
     files: { "src/value.ts": "export const value = 1\n" },
@@ -251,17 +255,17 @@ canonical Effect-native starter and refuses to overwrite an existing file.
 `check` adds focused migration guidance when it finds Promise-style script
 callbacks.
 
-The script DSL applies `project`, `config`, `tui`, and `setup` with the same deterministic ordering described above. Automatic scripts run again after `opencode-drive restart --name demo`.
+The script DSL applies `project`, `config`, `tuiConfig`, and `setup` with the same deterministic ordering described above. Automatic scripts run again after `opencode-drive restart --name demo`.
 
-Use `launch: "manual"` only when the workflow must control server and client restarts itself. In manual mode `ui` is `null`; run `server.launch()` before `clients.launch(name)`. Only one server may run at a time, `server.kill()` permits relaunch, and a closed client name may be reused.
+Use `launch: "manual"` only when the workflow must control server and TUI restarts itself. In manual mode `tui` and `ui` are `null`; run `server.launch()` before `tuis.launch(name)`. Only one server may run at a time, `server.kill()` permits relaunch, and a closed TUI name may be reused.
 
 ```ts
 export default defineScript({
   launch: "manual",
-  run: ({ server, clients }) =>
+  run: ({ server, tuis }) =>
     Effect.gen(function* () {
       yield* server.launch()
-      const alice = yield* clients.launch("alice", { recording: true })
+      const alice = yield* tuis.launch("alice", { recording: true })
       yield* alice.ui.screenshot("alice")
       yield* alice.close()
     }),

@@ -9,7 +9,7 @@ import type {
   OpenCodeTuiConfig,
   Project as ProjectDefinition,
   Setup,
-} from "../script/types.js"
+} from "../project.js"
 import { error } from "./error.js"
 
 export interface Options {

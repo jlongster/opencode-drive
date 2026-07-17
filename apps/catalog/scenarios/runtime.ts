@@ -51,7 +51,7 @@ export function catalogScenarioRuntime(options: {
               ".opencode/tui.json",
               `${JSON.stringify({ $schema: "https://opencode.ai/tui.json", theme: options.theme }, undefined, 2)}\n`,
             ),
-    client: { viewport: catalogViewport },
+    tui: { viewport: catalogViewport },
     opencode: { dev: options.opencode },
   }
 }

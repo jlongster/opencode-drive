@@ -6,8 +6,8 @@ import * as Scope from "effect/Scope"
 import * as Exit from "effect/Exit"
 import * as OpenCodeInstance from "../instance/runtime.js"
 import * as SimulationConnector from "../simulation/connector.js"
-import * as OpenCodeClients from "./client.js"
-import * as OpenCodeApi from "./api.js"
+import * as OpenCodeTui from "./client.js"
+import * as OpenCodeSdk from "./opencode.js"
 import { error, type OpenCodeDriverError } from "./error.js"
 import * as LlmController from "./llm-controller.js"
 
@@ -26,9 +26,9 @@ export interface Options {
 
 export interface Server {
   readonly llm: LlmController.Controller
-  readonly clients: OpenCodeClients.Control
+  readonly tuis: OpenCodeTui.Control
   readonly launch: () => Effect.Effect<
-    OpenCodeApi.Api,
+    OpenCodeSdk.OpenCode,
     | OpenCodeDriverError
     | LlmController.LlmControllerError
     | SimulationConnector.SimulationCompatibilityError
@@ -47,7 +47,7 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
   const target = options.target ?? {}
   const instance = options.instance
   const llm = yield* LlmController.make()
-  const clients = yield* OpenCodeClients.makeClients(
+  const tuis = yield* OpenCodeTui.makeTuis(
     instance,
     target.visible ?? false,
     connector,
@@ -97,7 +97,7 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
         ),
       ),
     )
-    const api = yield* OpenCodeApi.make(instance.artifacts).pipe(
+    const opencode = yield* OpenCodeSdk.make(instance.artifacts).pipe(
       Effect.onError(() =>
         instance.killServer.pipe(
           Effect.ignore,
@@ -127,7 +127,7 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
       Effect.catchCause(() => Effect.void),
       Effect.forkIn(scope),
     )
-    return api
+    return opencode
   })
 
   const killGeneration = Effect.fn("OpenCodeServer.kill")(function* () {
@@ -152,7 +152,7 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
 
   return {
     llm,
-    clients,
+    tuis,
     launch,
     kill,
     failure: Effect.raceFirst(

@@ -45,7 +45,7 @@ command flags, and application arguments after `--`. Backend and UI behavior
 belongs in the Effect program.
 
 `OpenCodeDriver.use` is the safe default. It owns the scope, observes backend
-failure, settles queued LLM work, closes every client, and exports recordings
+failure, settles queued LLM work, closes every TUI, and exports recordings
 whether the program succeeds or fails:
 
 ```ts
@@ -87,7 +87,7 @@ OpenCodeDriver.use({
 }, program)
 ```
 
-Additional clients share the same server and LLM controller:
+Additional TUIs share the same server and LLM controller:
 
 ```ts
 import { Effect } from "effect"
@@ -95,7 +95,7 @@ import { OpenCodeDriver } from "opencode-drive"
 
 export default OpenCodeDriver.use((oc) =>
   Effect.gen(function* () {
-    const secondary = yield* oc.clients.make({
+    const secondary = yield* oc.tuis.launch({
       viewport: { cols: 120, rows: 40 },
     })
     yield* oc.ui.screenshot("primary")
@@ -104,7 +104,16 @@ export default OpenCodeDriver.use((oc) =>
 )
 ```
 
-Enable recording per client. Settlement finishes each timeline and exports its
+The generated OpenCode SDK client is exposed as `opencode`; launched frontend
+processes are `tui` and `tuis`. This keeps SDK calls distinct from terminal UI
+control:
+
+```ts
+const health = yield* opencode.health.get()
+const frame = yield* tui.ui.capture()
+```
+
+Enable recording per TUI. Settlement finishes each timeline and exports its
 video automatically:
 
 ```ts
@@ -112,19 +121,19 @@ import { Effect } from "effect"
 import { OpenCodeDriver } from "opencode-drive"
 
 export default OpenCodeDriver.use(
-  { client: { recording: true } },
+  { tui: { recording: true } },
   (oc) =>
     Effect.gen(function* () {
       yield* oc.ui.screenshot("recorded-home")
       yield* Effect.log(
-        `recording will be exported to ${oc.client.recording?.path}`,
+        `recording will be exported to ${oc.tui.recording?.path}`,
       )
     }),
 )
 ```
 
 Settlement errors are program failures. For example, output after a terminal
-LLM event fails the run while `use` still closes clients and attempts recording
+LLM event fails the run while `use` still closes TUIs and attempts recording
 export:
 
 ```ts
@@ -236,7 +245,7 @@ export default defineScript({
   config: {
     autoupdate: false,
   },
-  tui: {
+  tuiConfig: {
     theme: "system",
   },
   project: {
@@ -245,10 +254,10 @@ export default defineScript({
       "src/example.ts": "export const value = 1\n",
     },
   },
-  setup: ({ config, tui }) =>
+  setup: ({ config, tuiConfig }) =>
     Effect.sync(() => {
       config.username = "Drive"
-      tui.scroll_speed = 1
+      tuiConfig.scroll_speed = 1
     }),
   run: ({ ui, llm }) =>
     Effect.gen(function* () {
@@ -263,7 +272,7 @@ export default defineScript({
 `project.git: true`, Drive creates a fresh repository and commits the complete
 pre-launch state, including files written in `setup`. A prepared repository is
 never replaced; omit `project.git` when an `init` step supplies Git history.
-Declared `config` and `tui` values are deeply merged over fixture
+Declared `config` and `tuiConfig` values are deeply merged over fixture
 `.opencode/opencode.jsonc` and `.opencode/tui.jsonc` files. Arrays replace
 instead of merging, and mutations made in `setup` take final precedence.
 
@@ -330,10 +339,10 @@ Promise-style `setup`, `run`, or `ui.waitFor` callback, it prints the equivalent
 Effect shape after the TypeScript diagnostics. Use `Effect.sleep(milliseconds)`
 for unconditional delays.
 
-The `fs`, `ui`, `llm`, `server`, and `clients` capabilities expose
+The `fs`, `ui`, `llm`, `server`, and `tuis` capabilities expose
 Effect-returning operations. Compose them with `yield*`, `Effect.flatMap`, or
-other Effect operators. Scripts receive the same `Ui`, `Client`, `Clients`, and
-client options as `OpenCodeDriver`; `defineScript` does not define a second
+other Effect operators. Scripts receive the same `Ui`, `Tui`, `Tuis`, and TUI
+options as `OpenCodeDriver`; `defineScript` does not define a second
 programmatic interface. Predicates passed to `ui.waitFor` may return a boolean
 or an Effect. Set `launch: "manual"` to launch the shared OpenCode server and
 every TUI explicitly:
@@ -344,28 +353,28 @@ import { defineScript } from "opencode-drive"
 
 export default defineScript({
   launch: "manual",
-  run: ({ ui, server, clients }) =>
+  run: ({ ui, server, tuis }) =>
     Effect.gen(function* () {
       // ui is null in manual mode.
       yield* server.launch()
-      const alice = yield* clients.launch("alice")
-      const bob = yield* clients.launch("bob")
+      const alice = yield* tuis.launch("alice")
+      const bob = yield* tuis.launch("bob")
       yield* alice.ui.submit("Hello from Alice")
       yield* bob.ui.screenshot("bob-view")
     }),
 })
 ```
 
-Only one server may be launched per script. All clients share its LLM backend. Client processes and temporary
+Only one server may be launched per script. All TUIs share its LLM backend. TUI processes and temporary
 script links are cleaned up when the script ends.
 
 `yield* server.kill()` stops the server so it can be launched again later.
-`yield* client.close()` closes a client, after which its name may be reused.
+`yield* tui.close()` closes a TUI, after which its name may be reused.
 
-Pass `{ recording: true }` to record an individual client:
+Pass `{ recording: true }` to record an individual TUI:
 
 ```ts
-const alice = yield* clients.launch("alice", { recording: true })
+const alice = yield* tuis.launch("alice", { recording: true })
 yield* alice.ui.submit("Hello")
 yield* alice.close()
 ```

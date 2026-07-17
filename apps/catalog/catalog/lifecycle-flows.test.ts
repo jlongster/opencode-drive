@@ -37,7 +37,7 @@ describe("catalog lifecycle scenarios", () => {
   test("builds the shared capture and reproduce driver runtime", () => {
     const runtime = catalogScenarioRuntime({ opencode: "/tmp/opencode", theme: "rosepine" })
     expect(runtime.opencode).toEqual({ dev: "/tmp/opencode" })
-    expect(runtime.client?.viewport).toEqual(catalogViewport)
+    expect(runtime.tui?.viewport).toEqual(catalogViewport)
     expect(runtime.project?.files).toMatchObject({
       "fixture.txt": "before\n",
       "src/ledger.ts": expect.stringContaining("total"),

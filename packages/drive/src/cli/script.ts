@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url"
 import * as Deferred from "effect/Deferred"
 import * as Effect from "effect/Effect"
 import * as OpenCodeDriver from "../driver/index.js"
-import type * as OpenCodeClient from "../driver/client.js"
+import type * as OpenCodeTui from "../driver/client.js"
 import * as OpenCodeUi from "../driver/ui.js"
 import * as PreparedDriver from "../driver/prepared.js"
 import type * as OpenCodeInstance from "../instance/runtime.js"
@@ -38,10 +38,10 @@ export const runScript = Effect.fn("DriveCli.runScript")(function* (
   onReady?: () => void,
 ) {
   const prepared = yield* PreparedDriver.make(instance, {
-    visible: false,
+    visible: instance.visible,
     launch: "launch" in script ? "manual" : "automatic",
-    clientName: "default",
-    client: script.client,
+    tuiName: "default",
+    tui: script.tui,
   })
   const protectGit = yield* Effect.promise(() =>
     hasGitMetadata(join(instance.artifacts, "files")),
@@ -73,11 +73,11 @@ export const runScript = Effect.fn("DriveCli.runScript")(function* (
         ),
     }
   }
-  const adaptClient = (client: OpenCodeClient.Client): OpenCodeClient.Client => {
-    const recording = client.recording
+  const adaptTui = (tui: OpenCodeTui.Tui): OpenCodeTui.Tui => {
+    const recording = tui.recording
     return {
-      ui: adaptUi(client.ui),
-      close: client.close,
+      ui: adaptUi(tui.ui),
+      close: tui.close,
       ...(recording === undefined
         ? {}
         : {
@@ -94,27 +94,35 @@ export const runScript = Effect.fn("DriveCli.runScript")(function* (
           }),
     }
   }
-  const clientOptions = (options?: OpenCodeClient.Options) => ({
-    ...script.client,
+  const tuiOptions = (options?: OpenCodeTui.TuiOptions) => ({
+    ...("launch" in script ? script.tui : undefined),
     ...options,
   })
-  const clients: OpenCodeClient.Clients = {
-    make: (options) =>
-      prepared.clients.make(clientOptions(options)).pipe(
-        Effect.tap(() => Effect.sync(() => onReady?.())),
-        Effect.map(adaptClient),
-      ),
-    launch: (name, options) =>
-      prepared.clients.launch(name, clientOptions(options)).pipe(
-        Effect.tap(() => Effect.sync(() => onReady?.())),
-        Effect.map(adaptClient),
-      ),
+  function launchTui(
+    options?: OpenCodeTui.TuiOptions,
+  ): ReturnType<OpenCodeTui.Tuis["launch"]>
+  function launchTui(
+    name: string,
+    options?: OpenCodeTui.TuiOptions,
+  ): ReturnType<OpenCodeTui.Tuis["launch"]>
+  function launchTui(
+    nameOrOptions?: string | OpenCodeTui.TuiOptions,
+    options?: OpenCodeTui.TuiOptions,
+  ) {
+    const launched = typeof nameOrOptions === "string"
+      ? prepared.tuis.launch(nameOrOptions, tuiOptions(options))
+      : prepared.tuis.launch(tuiOptions(nameOrOptions))
+    return launched.pipe(
+      Effect.tap(() => Effect.sync(() => onReady?.())),
+      Effect.map(adaptTui),
+    )
   }
+  const tuis: OpenCodeTui.Tuis = { launch: launchTui }
   const context = {
     fs: createScriptFileSystem(join(instance.artifacts, "files"), {
       git: protectGit,
     }),
-    clients,
+    tuis,
     server: {
       launch: prepared.server.launch,
       kill: prepared.server.kill,
@@ -122,32 +130,32 @@ export const runScript = Effect.fn("DriveCli.runScript")(function* (
     llm: prepared.llm,
     artifacts: instance.artifacts,
   }
-  const primaryClient = prepared.primary
+  const primaryTui = prepared.primary
   const automatic = (definition: AutomaticScriptDefinition) => {
-    if (primaryClient === undefined || prepared.driver === undefined)
+    if (primaryTui === undefined || prepared.driver === undefined)
       return Effect.fail(
-        new Error("automatic script did not launch its primary client"),
+        new Error("automatic script did not launch its primary TUI"),
       )
-    const client = adaptClient(primaryClient)
+    const tui = adaptTui(primaryTui)
     return definition.run({
       ...context,
-      api: prepared.driver.api,
-      client,
-      ui: client.ui,
+      opencode: prepared.driver.opencode,
+      tui,
+      ui: tui.ui,
     })
   }
   const execution =
     "launch" in script
-      ? script.run({ ...context, ui: null })
+      ? script.run({ ...context, tui: null, ui: null })
       : automatic(script)
   if (!Effect.isEffect(execution))
     return yield* Effect.fail(new Error("script run must return an Effect"))
-  if (primaryClient !== undefined) onReady?.()
+  if (primaryTui !== undefined) onReady?.()
   yield* Effect.raceAllFirst([
     execution,
     Deferred.await(operationFailure),
     prepared.failure.pipe(
-      Effect.catchIf(isZeroStatusClientExit, () => Effect.void),
+      Effect.catchIf(isZeroStatusTuiExit, () => Effect.void),
     ),
   ])
   const report = yield* prepared.settle()
@@ -155,10 +163,10 @@ export const runScript = Effect.fn("DriveCli.runScript")(function* (
   return undefined
 })
 
-function isZeroStatusClientExit(cause: unknown) {
+function isZeroStatusTuiExit(cause: unknown) {
   return (
     cause instanceof OpenCodeDriver.OpenCodeDriverError &&
-    cause.operation === "client.exit" &&
+    cause.operation === "tui.exit" &&
     cause.message.endsWith("status 0")
   )
 }
@@ -174,15 +182,15 @@ function isScriptDefinition(value: unknown): value is ScriptDefinition {
     typeof value.run === "function" &&
     (value.project === undefined || isScriptProject(value.project)) &&
     (value.config === undefined || isJsonObject(value.config)) &&
-    (value.tui === undefined || isJsonObject(value.tui)) &&
+    (value.tuiConfig === undefined || isJsonObject(value.tuiConfig)) &&
     (value.setup === undefined || typeof value.setup === "function") &&
     (value.tools === undefined || typeof value.tools === "function") &&
-    (value.client === undefined || isClientOptions(value.client)) &&
+    (value.tui === undefined || isTuiOptions(value.tui)) &&
     (!("launch" in value) || value.launch === "manual")
   )
 }
 
-function isClientOptions(value: unknown) {
+function isTuiOptions(value: unknown) {
   if (!isRecord(value)) return false
   if (value.recording !== undefined && typeof value.recording !== "boolean")
     return false

@@ -8,9 +8,9 @@ Make the Effect-native driver the single owner of OpenCode Drive lifecycle behav
 
 - `OpenCodeDriver.use` is the default safe lifecycle boundary.
 - `defineScript` has no Promise API or compatibility shim: `setup` and `run` return Effects.
-- Script `fs`, `ui`, `llm`, `server`, and `clients` operations return Effects; `llm.serve` handlers return Streams.
+- Script `fs`, `ui`, `llm`, `server`, and `tuis` operations return Effects; `llm.serve` handlers return Streams.
 - Script cancellation is Effect interruption and runs scoped finalizers.
-- Manual scripts retain server kill/relaunch and named multi-client behavior.
+- Manual scripts retain server kill/relaunch and named multi-TUI behavior.
 - CLI `--command.ui.*` names and payloads remain identical to OpenCode's canonical frontend protocol.
 - OpenCode configuration is expressed through normal `opencode.jsonc` and `tui.jsonc` files, not Drive-specific runtime flags.
 - Backend simulation control remains in programs, not CLI commands.
@@ -43,16 +43,16 @@ Make the Effect-native driver the single owner of OpenCode Drive lifecycle behav
 4. Execute the program in the CLI's existing Effect runtime, without a nested runtime or detached owner.
 5. Reject command flags and arguments after `--`.
 6. Make the Effect runner the README quick start.
-7. Document minimal, multi-client, recording, settlement-failure, and `use` versus `make` examples.
+7. Document minimal, multi-TUI, recording, settlement-failure, and `use` versus `make` examples.
 
 ## Phase 3: One Lifecycle Engine
 
 1. Make LLM response state independent of one backend connection and attach it per server generation.
 2. Introduce an Effect-native server-generation controller over one prepared `OpenCodeInstance`.
-3. Add Effect-native named client creation, name release, unexpected-exit observation, and relaunch.
+3. Add Effect-native named TUI creation, name release, unexpected-exit observation, and relaunch.
 4. Reuse the Effect UI implementation directly for `defineScript`, including effectful polling and predicates.
 5. Add an internal driver constructor over an already prepared instance.
-6. Route `defineScript` backend, UI polling, LLM routing, recording finalization, and client ownership through the shared Effect services.
+6. Route `defineScript` backend, UI polling, LLM routing, recording finalization, and TUI ownership through the shared Effect services.
 7. Delete duplicated lifecycle implementations only after all characterization tests pass.
 8. Replace interruption-sensitive cached terminal operations with shared independently owned settlement effects.
 
@@ -75,9 +75,9 @@ Make the Effect-native driver the single owner of OpenCode Drive lifecycle behav
 
 ## Follow-Ups
 
-### Typed OpenCode Client
+### Typed OpenCode SDK
 
-Expose the existing OpenCode SDK client after introducing one service-registration discovery abstraction. The driver must keep registration passwords private and document compatibility between the SDK version bundled by Drive and arbitrary OpenCode command/dev targets.
+Expose the existing OpenCode SDK as `opencode` after introducing one service-registration discovery abstraction. The driver must keep registration passwords private and document compatibility between the SDK version bundled by Drive and arbitrary OpenCode command/dev targets.
 
 ### Tool Lifecycle Simulation
 

@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect"
 
 export default defineScript({
   launch: "manual",
-  run: ({ server, clients, artifacts }) =>
+  run: ({ server, tuis, artifacts }) =>
     Effect.gen(function* () {
       yield* server.launch()
       const firstServer = Number(
@@ -13,8 +13,8 @@ export default defineScript({
       )
       const [alice] = yield* Effect.all(
         [
-          clients.launch("alice", { recording: true }),
-          clients.launch("bob", { recording: true }),
+          tuis.launch("alice", { recording: true }),
+          tuis.launch("bob", { recording: true }),
         ],
         { concurrency: "unbounded" },
       )
@@ -39,7 +39,7 @@ export default defineScript({
         return yield* Effect.fail(new Error("alice recording was not configured"))
       const aliceRecording = yield* recording.finish()
       yield* alice.close()
-      const relaunchedAlice = yield* clients.launch("alice")
+      const relaunchedAlice = yield* tuis.launch("alice")
       yield* relaunchedAlice.close()
       yield* server.kill()
 

@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as OpenCodeInstance from "../instance/runtime.js"
 import * as SimulationConnector from "../simulation/connector.js"
-import * as OpenCodeClient from "./client.js"
+import * as OpenCodeTui from "./client.js"
 import { error, type OpenCodeDriverError } from "./error.js"
 import type {
   Driver,
@@ -20,23 +20,23 @@ import { decodeRunReport } from "./report.js"
 
 export interface Options {
   readonly visible?: boolean
-  readonly client?: OpenCodeClient.Options
+  readonly tui?: OpenCodeTui.TuiOptions
   readonly launch?: "automatic" | "manual"
-  readonly clientName?: string
+  readonly tuiName?: string
   readonly artifactsRetained?: boolean
   readonly compatibility?: SimulationConnector.CompatibilityPolicy
 }
 
 export interface Prepared {
   readonly driver: Driver | undefined
-  readonly primary: OpenCodeClient.Client | undefined
+  readonly primary: OpenCodeTui.Tui | undefined
   readonly llm: Llm
-  readonly clients: OpenCodeClient.Clients
+  readonly tuis: OpenCodeTui.Tuis
   readonly server: Pick<OpenCodeServer.Server, "launch" | "kill">
   readonly artifacts: string
   readonly settle: Driver["settle"]
   readonly failure: Effect.Effect<never, LlmControllerError | OpenCodeDriverError>
-  readonly unexpectedClientExit: OpenCodeClient.Control["unexpectedExit"]
+  readonly unexpectedTuiExit: OpenCodeTui.Control["unexpectedExit"]
 }
 
 export const makeWithServices = Effect.fn("OpenCodeDriver.makePreparedWithServices")(
@@ -51,16 +51,16 @@ export const makeWithServices = Effect.fn("OpenCodeDriver.makePreparedWithServic
         compatibility: options.compatibility,
       },
     })
-    const api = (options.launch ?? "automatic") === "automatic"
+    const opencode = (options.launch ?? "automatic") === "automatic"
       ? yield* server.launch()
       : undefined
     const primary = (options.launch ?? "automatic") === "automatic"
-      ? options.clientName === undefined
-        ? yield* server.clients.make(options.client)
-        : yield* server.clients.launch(options.clientName, options.client)
+      ? options.tuiName === undefined
+        ? yield* server.tuis.launch(options.tui)
+        : yield* server.tuis.launch(options.tuiName, options.tui)
       : undefined
     const complete = (
-      clients: Effect.Effect<
+      tuis: Effect.Effect<
         ReadonlyArray<string>,
         OpenCodeDriverError | OpenCodeUi.OperationError
       >,
@@ -68,7 +68,7 @@ export const makeWithServices = Effect.fn("OpenCodeDriver.makePreparedWithServic
       Effect.gen(function* () {
         const llm = yield* Effect.exit(server.llm.settle())
         const shutdown = yield* Effect.exit(server.llm.shutdown())
-        const clientExit = yield* Effect.exit(clients)
+        const tuiExit = yield* Effect.exit(tuis)
         let failure: Cause.Cause<
           | LlmControllerError
           | LlmSettlementError
@@ -80,16 +80,16 @@ export const makeWithServices = Effect.fn("OpenCodeDriver.makePreparedWithServic
           failure = failure === undefined
             ? shutdown.cause
             : Cause.combine(failure, shutdown.cause)
-        if (Exit.isFailure(clientExit))
+        if (Exit.isFailure(tuiExit))
           failure = failure === undefined
-            ? clientExit.cause
-            : Cause.combine(failure, clientExit.cause)
+            ? tuiExit.cause
+            : Cause.combine(failure, tuiExit.cause)
         if (failure !== undefined) return yield* Effect.failCause(failure)
         const compatibility = [
           ...(yield* server.compatibility),
-          ...(yield* server.clients.compatibility),
+          ...(yield* server.tuis.compatibility),
         ]
-        const recordings = Exit.isSuccess(clientExit) ? clientExit.value : []
+        const recordings = Exit.isSuccess(tuiExit) ? tuiExit.value : []
         const report = yield* decodeRunReport({
           artifacts: instance.artifacts,
           retained: options.artifactsRetained ?? true,
@@ -100,17 +100,17 @@ export const makeWithServices = Effect.fn("OpenCodeDriver.makePreparedWithServic
         )
         return report
       })
-    const settle = yield* SharedEffect.make(complete(server.clients.settle()))
+    const settle = yield* SharedEffect.make(complete(server.tuis.settle()))
     yield* Effect.addFinalizer(() => server.llm.shutdown())
     const llm: Llm = server.llm
-    const driver: Driver | undefined = primary === undefined || api === undefined
+    const driver: Driver | undefined = primary === undefined || opencode === undefined
       ? undefined
       : {
-          api,
-          client: primary,
+          opencode,
+          tui: primary,
           ui: primary.ui,
           llm,
-          clients: server.clients,
+          tuis: server.tuis,
           artifacts: instance.artifacts,
           settle: () => settle,
         }
@@ -118,24 +118,24 @@ export const makeWithServices = Effect.fn("OpenCodeDriver.makePreparedWithServic
       driver,
       primary,
       llm,
-      clients: server.clients,
+      tuis: server.tuis,
       server,
       artifacts: instance.artifacts,
       settle: () => settle,
       failure: Effect.raceFirst(
         server.failure,
-        server.clients.unexpectedExit.pipe(
+        server.tuis.unexpectedExit.pipe(
           Effect.flatMap(({ name, status }) =>
             Effect.fail(
               error(
-                "client.exit",
-                `OpenCode client "${name}" exited with status ${status}`,
+                "tui.exit",
+                `OpenCode TUI "${name}" exited with status ${status}`,
               ),
             ),
           ),
         ),
       ),
-      unexpectedClientExit: server.clients.unexpectedExit,
+      unexpectedTuiExit: server.tuis.unexpectedExit,
     } satisfies Prepared
   },
 )

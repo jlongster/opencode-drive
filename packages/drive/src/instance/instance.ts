@@ -13,7 +13,7 @@ import type {
   OpenCodeTuiConfig,
   Project,
   Setup,
-} from "../script/types.js"
+} from "../project.js"
 
 export function artifactDirectory() {
   return resolve(join(tmpdir(), "opencode-drive"))
@@ -78,10 +78,10 @@ export const prepareInstanceProject = Effect.fn("OpenCodeInstance.prepareProject
     const setup: unknown = options.setup({
       fs: createScriptFileSystem(files, { git: protectGit }),
       config,
-      tui,
+      tuiConfig: tui,
     })
     if (!Effect.isEffect(setup))
-        return yield* Effect.fail(new Error("setup must return an Effect"))
+      return yield* Effect.fail(new Error("setup must return an Effect"))
     yield* setup
   }
   yield* Effect.all([

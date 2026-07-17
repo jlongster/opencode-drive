@@ -2,4 +2,4 @@
 "opencode-drive": minor
 ---
 
-Expose an authenticated, typed OpenCode API client to drivers and scripts.
+Expose the authenticated generated OpenCode SDK as `opencode` to drivers and scripts.

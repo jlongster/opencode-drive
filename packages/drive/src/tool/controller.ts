@@ -8,7 +8,7 @@ import type {
   JsonValue,
   OpenCodeConfig,
   Setup as ProjectSetup,
-} from "../script/types.js"
+} from "../project.js"
 import {
   Failure,
   ShellInput,
