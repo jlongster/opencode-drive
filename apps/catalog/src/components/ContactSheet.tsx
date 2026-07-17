@@ -75,6 +75,7 @@ export function ContactSheet({
       ) : (
         screens.map((screen) => {
           const frame = frameFor(screen, variantId)
+          if (!frame) return undefined
           return (
             <article
               key={screen.id}

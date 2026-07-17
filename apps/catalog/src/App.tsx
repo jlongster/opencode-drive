@@ -6,7 +6,7 @@ import type {
   FacetSelections,
   Taxonomy,
 } from "./catalog"
-import { buildFacetIndex, emptyFacetSelections, filterFlows, filterScreens } from "./catalog"
+import { buildFacetIndex, emptyFacetSelections, filterFlows, filterScreens, frameFor } from "./catalog"
 import { CommandPalette } from "./components/CommandPalette"
 import { ContactSheet } from "./components/ContactSheet"
 import { FlowBrowser } from "./components/FlowBrowser"
@@ -167,30 +167,34 @@ export function App({ catalog }: AppProps) {
   const [variantIndex, setVariantIndex] = useState(0)
   const searchRef = useRef<HTMLInputElement>(null)
   const activeVariant = catalog.variants[variantIndex] ?? catalog.variants[0]
+  const availableScreens = useMemo(
+    () => catalog.screens.filter((screen) => frameFor(screen, activeVariant.id) !== undefined),
+    [catalog.screens, activeVariant.id],
+  )
 
   const facetIndex = useMemo(() => buildFacetIndex(catalog.screens), [catalog.screens])
   const screens = useMemo(
     () =>
-      filterScreens(catalog.screens, ui.query, ui.mode, {
+      filterScreens(availableScreens, ui.query, ui.mode, {
         screenLabels: ui.screenLabels,
         uiElements: ui.uiElements,
         facets: ui.facets,
       }),
-    [catalog.screens, ui.query, ui.mode, ui.screenLabels, ui.uiElements, ui.facets],
+    [availableScreens, ui.query, ui.mode, ui.screenLabels, ui.uiElements, ui.facets],
   )
   const flows = useMemo(() => filterFlows(catalog.flows, ui.query), [catalog.flows, ui.query])
   const activeFlow = flows.find((flow) => flow.id === ui.activeFlowId) ?? flows[0]
   const viewerScreens =
     ui.mode === "flows" && activeFlow
       ? activeFlow.steps.flatMap((step) => {
-          const screen = catalog.screens.find((candidate) => candidate.id === step.screenId)
+          const screen = availableScreens.find((candidate) => candidate.id === step.screenId)
           return screen ? [screen] : []
         })
       : screens
   const selectedId = viewerScreens.some((screen) => screen.id === ui.selectedScreenId)
     ? ui.selectedScreenId
     : viewerScreens[0]?.id
-  const selectedScreen = catalog.screens.find((screen) => screen.id === selectedId)
+  const selectedScreen = availableScreens.find((screen) => screen.id === selectedId)
   const taxonomy = ui.mode === "screens" ? catalog.screenTaxonomy : catalog.uiElementTaxonomy
   const taxonomyValues = ui.mode === "screens" ? ui.screenLabels : ui.uiElements
   const taxonomyCounts = useMemo(() => {

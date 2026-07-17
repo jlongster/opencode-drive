@@ -3,6 +3,14 @@
   "generatedBy": "scripts/capture-opencode-drive.ts",
   "variants": [
     {
+      "id": "5d5b33f195cc",
+      "label": "5d5b33f",
+      "source": "opencode-v2-latest",
+      "revision": "5d5b33f195cc664d376ea85503f49433a05a3049",
+      "ref": "origin/v2",
+      "committedAt": "2026-07-17T19:04:40+02:00"
+    },
+    {
       "id": "baseline",
       "label": "baseline",
       "source": "opencode-effect-beta-98",
@@ -318,10 +326,12 @@
     "full-screen",
     "inline",
     "modal",
+    "panel",
     "toast"
   ],
   "patterns": [
     "approval",
+    "error-report",
     "form",
     "info",
     "landing",
@@ -330,7 +340,8 @@
     "pairing",
     "palette",
     "picker",
-    "status"
+    "status",
+    "terminal"
   ],
   "features": [
     "agent",
@@ -348,17 +359,22 @@
     "permission",
     "question",
     "session",
+    "shell",
     "shortcuts",
     "skill",
+    "subagent",
     "system",
     "theme",
+    "thinking",
     "tool"
   ],
   "states": [
     "confirmation",
     "default",
     "empty",
+    "error",
     "populated",
+    "running",
     "streaming",
     "success"
   ],
@@ -413,6 +429,12 @@
       },
       "variations": [],
       "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/home.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
         {
           "variantId": "baseline",
           "src": "captures/baseline/home.frame.json",
@@ -476,6 +498,12 @@
       "variations": [],
       "frames": [
         {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/command-palette.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
+        {
           "variantId": "baseline",
           "src": "captures/baseline/command-palette.frame.json",
           "cols": 118,
@@ -537,6 +565,12 @@
       },
       "variations": [],
       "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/model-picker.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
         {
           "variantId": "baseline",
           "src": "captures/baseline/model-picker.frame.json",
@@ -600,6 +634,12 @@
       "variations": [],
       "frames": [
         {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/agent-picker.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
+        {
           "variantId": "baseline",
           "src": "captures/baseline/agent-picker.frame.json",
           "cols": 118,
@@ -657,6 +697,12 @@
       },
       "variations": [],
       "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/integration-picker.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
         {
           "variantId": "baseline",
           "src": "captures/baseline/integration-picker.frame.json",
@@ -716,6 +762,12 @@
       "variations": [],
       "frames": [
         {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/theme-picker.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
+        {
           "variantId": "baseline",
           "src": "captures/baseline/theme-picker.frame.json",
           "cols": 118,
@@ -771,6 +823,12 @@
       },
       "variations": [],
       "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/mcp-list.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
         {
           "variantId": "baseline",
           "src": "captures/baseline/mcp-list.frame.json",
@@ -834,6 +892,12 @@
       "variations": [],
       "frames": [
         {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/status.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
+        {
           "variantId": "baseline",
           "src": "captures/baseline/status.frame.json",
           "cols": 118,
@@ -891,6 +955,12 @@
       },
       "variations": [],
       "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/debug.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
         {
           "variantId": "baseline",
           "src": "captures/baseline/debug.frame.json",
@@ -954,6 +1024,12 @@
       "variations": [],
       "frames": [
         {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/help.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
+        {
           "variantId": "baseline",
           "src": "captures/baseline/help.frame.json",
           "cols": 118,
@@ -1009,6 +1085,12 @@
       },
       "variations": [],
       "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/pair.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
         {
           "variantId": "baseline",
           "src": "captures/baseline/pair.frame.json",
@@ -1074,6 +1156,12 @@
       "variations": [],
       "frames": [
         {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/session-picker.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
+        {
           "variantId": "baseline",
           "src": "captures/baseline/session-picker.frame.json",
           "cols": 118,
@@ -1136,6 +1224,12 @@
       "variations": [],
       "frames": [
         {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/skill-picker.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
+        {
           "variantId": "baseline",
           "src": "captures/baseline/skill-picker.frame.json",
           "cols": 118,
@@ -1193,6 +1287,12 @@
       },
       "variations": [],
       "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/patch-input-streaming.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
         {
           "variantId": "baseline",
           "src": "captures/baseline/patch-input-streaming.frame.json",
@@ -1258,6 +1358,12 @@
       "variations": [],
       "frames": [
         {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/permission-prompt.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
+        {
           "variantId": "baseline",
           "src": "captures/baseline/permission-prompt.frame.json",
           "cols": 118,
@@ -1316,6 +1422,12 @@
       "variations": [],
       "frames": [
         {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/patch-success.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
+        {
           "variantId": "baseline",
           "src": "captures/baseline/patch-success.frame.json",
           "cols": 118,
@@ -1371,6 +1483,12 @@
       },
       "variations": [],
       "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/session-rename.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
         {
           "variantId": "baseline",
           "src": "captures/baseline/session-rename.frame.json",
@@ -1429,6 +1547,12 @@
       },
       "variations": [],
       "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/session-fork.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
         {
           "variantId": "baseline",
           "src": "captures/baseline/session-fork.frame.json",
@@ -1489,6 +1613,12 @@
       },
       "variations": [],
       "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/session-export.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
         {
           "variantId": "baseline",
           "src": "captures/baseline/session-export.frame.json",
@@ -1556,6 +1686,12 @@
       "variations": [],
       "frames": [
         {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/question-prompt.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
+        {
           "variantId": "baseline",
           "src": "captures/baseline/question-prompt.frame.json",
           "cols": 118,
@@ -1618,6 +1754,12 @@
       "variations": [],
       "frames": [
         {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/session-picker-populated.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
+        {
           "variantId": "baseline",
           "src": "captures/baseline/session-picker-populated.frame.json",
           "cols": 118,
@@ -1675,6 +1817,12 @@
       },
       "variations": [],
       "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/toast-success.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
         {
           "variantId": "baseline",
           "src": "captures/baseline/toast-success.frame.json",
@@ -1736,6 +1884,12 @@
       "variations": [],
       "frames": [
         {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/diff-viewer.frame.json",
+          "cols": 118,
+          "rows": 34
+        },
+        {
           "variantId": "baseline",
           "src": "captures/baseline/diff-viewer.frame.json",
           "cols": 118,
@@ -1744,6 +1898,448 @@
         {
           "variantId": "rosepine",
           "src": "captures/rosepine/diff-viewer.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "thinking-streaming",
+      "title": "Thinking streaming",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "shell-activity",
+        "transcript",
+        "status-indicator",
+        "inline",
+        "status",
+        "thinking",
+        "shell",
+        "streaming"
+      ],
+      "screenLabels": [
+        "shell-activity"
+      ],
+      "uiElements": [
+        "transcript",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "thinking",
+        "shell"
+      ],
+      "states": [
+        "streaming"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/thinking-streaming.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "shell-input-streaming",
+      "title": "Shell input streaming",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "shell-activity",
+        "transcript",
+        "tool-card",
+        "terminal-output",
+        "status-indicator",
+        "inline",
+        "terminal",
+        "tool",
+        "shell",
+        "streaming"
+      ],
+      "screenLabels": [
+        "tool-execution",
+        "shell-activity"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "terminal-output",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "terminal"
+      ],
+      "features": [
+        "tool",
+        "shell"
+      ],
+      "states": [
+        "streaming"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/shell-input-streaming.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "shell-output-streaming",
+      "title": "Shell output streaming",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "shell-activity",
+        "transcript",
+        "tool-card",
+        "terminal-output",
+        "status-indicator",
+        "inline",
+        "terminal",
+        "tool",
+        "shell",
+        "running",
+        "streaming"
+      ],
+      "screenLabels": [
+        "tool-execution",
+        "shell-activity"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "terminal-output",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "terminal"
+      ],
+      "features": [
+        "tool",
+        "shell"
+      ],
+      "states": [
+        "running",
+        "streaming"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/shell-output-streaming.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "shell-execute-succeeded",
+      "title": "Shell execution succeeded",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "shell-activity",
+        "transcript",
+        "tool-card",
+        "terminal-output",
+        "confirmation",
+        "inline",
+        "terminal",
+        "tool",
+        "shell",
+        "success"
+      ],
+      "screenLabels": [
+        "tool-execution",
+        "shell-activity"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "terminal-output",
+        "confirmation"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "terminal"
+      ],
+      "features": [
+        "tool",
+        "shell"
+      ],
+      "states": [
+        "success"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/shell-execute-succeeded.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "shell-execute-failed",
+      "title": "Shell execution failed",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "shell-activity",
+        "error-recovery",
+        "transcript",
+        "tool-card",
+        "terminal-output",
+        "error-report",
+        "inline",
+        "terminal",
+        "error-report",
+        "tool",
+        "shell",
+        "error"
+      ],
+      "screenLabels": [
+        "tool-execution",
+        "shell-activity",
+        "error-recovery"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "terminal-output",
+        "error-report"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "terminal",
+        "error-report"
+      ],
+      "features": [
+        "tool",
+        "shell"
+      ],
+      "states": [
+        "error"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/shell-execute-failed.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "subagent-running",
+      "title": "Subagent running",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "subagent-activity",
+        "transcript",
+        "tool-card",
+        "status-indicator",
+        "inline",
+        "status",
+        "agent",
+        "subagent",
+        "running"
+      ],
+      "screenLabels": [
+        "subagent-activity"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "agent",
+        "subagent"
+      ],
+      "states": [
+        "running"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/subagent-running.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "subagent-completed",
+      "title": "Subagent completed",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "subagent-activity",
+        "transcript",
+        "tool-card",
+        "confirmation",
+        "inline",
+        "status",
+        "agent",
+        "subagent",
+        "success"
+      ],
+      "screenLabels": [
+        "subagent-activity"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "confirmation"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "agent",
+        "subagent"
+      ],
+      "states": [
+        "success"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/subagent-completed.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "subagent-session",
+      "title": "Subagent session",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "subagent-activity",
+        "session-list",
+        "transcript",
+        "panel",
+        "status-indicator",
+        "full-screen",
+        "panel",
+        "status",
+        "agent",
+        "subagent",
+        "session",
+        "populated"
+      ],
+      "screenLabels": [
+        "subagent-activity",
+        "session-list"
+      ],
+      "uiElements": [
+        "transcript",
+        "panel",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "full-screen",
+        "panel"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "agent",
+        "subagent",
+        "session"
+      ],
+      "states": [
+        "populated"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/subagent-session.frame.json",
           "cols": 118,
           "rows": 34
         }
@@ -1876,6 +2472,35 @@
       ]
     },
     {
+      "id": "shell-lifecycle",
+      "title": "Foreground shell lifecycle",
+      "group": "Tool use",
+      "description": "Watch thinking and shell input stream before foreground commands succeed and fail.",
+      "replayable": true,
+      "steps": [
+        {
+          "screenId": "thinking-streaming",
+          "title": "Thinking streams"
+        },
+        {
+          "screenId": "shell-input-streaming",
+          "title": "Command input streams"
+        },
+        {
+          "screenId": "shell-output-streaming",
+          "title": "Command output streams"
+        },
+        {
+          "screenId": "shell-execute-succeeded",
+          "title": "Command succeeds"
+        },
+        {
+          "screenId": "shell-execute-failed",
+          "title": "Command fails"
+        }
+      ]
+    },
+    {
       "id": "approving-a-tool-call",
       "title": "Approving a tool call",
       "group": "Tool use",
@@ -1900,6 +2525,27 @@
           "screenId": "question-prompt",
           "title": "Choose or enter an answer",
           "trigger": "Submit the question form"
+        }
+      ]
+    },
+    {
+      "id": "subagent-lifecycle",
+      "title": "Subagent lifecycle",
+      "group": "Subagents",
+      "description": "Delegate work, observe its completion, and open the child session.",
+      "replayable": true,
+      "steps": [
+        {
+          "screenId": "subagent-running",
+          "title": "Subagent runs"
+        },
+        {
+          "screenId": "subagent-completed",
+          "title": "Subagent completes"
+        },
+        {
+          "screenId": "subagent-session",
+          "title": "Open the subagent session"
         }
       ]
     },

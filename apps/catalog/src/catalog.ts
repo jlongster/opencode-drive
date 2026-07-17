@@ -19,8 +19,8 @@ export interface CatalogSelections {
   readonly facets: FacetSelections
 }
 
-export function frameFor(screen: Screen, variantId: string): Frame {
-  return screen.frames.find((frame) => frame.variantId === variantId) ?? screen.frames[0]
+export function frameFor(screen: Screen, variantId: string): Frame | undefined {
+  return screen.frames.find((frame) => frame.variantId === variantId)
 }
 
 export const emptyFacetSelections: FacetSelections = {

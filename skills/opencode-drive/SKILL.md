@@ -36,6 +36,17 @@ bun run catalog:reproduce -- patch-success-lifecycle/permission-prompt \
 
 The command executes the registered recipe only through that checkpoint and writes an `opencode-terminal-frame-v1` artifact. Only flows in `apps/catalog/scenarios/index.ts` are replayable. Browse-only flows and screen cards copy standalone capture IDs instead; do not invent a flow prefix. Use a protocol-compatible OpenCode checkout, ideally the source revision shown by the selected capture set.
 
+To compare a committed local OpenCode branch against current v2 across every catalog state:
+
+```bash
+bun run catalog:capture -- \
+  --opencode /path/to/opencode \
+  --revision origin/v2 \
+  --revision HEAD
+```
+
+Add repeated `--theme` flags to capture the same commit pair under multiple themes. Capture resolves detached immutable worktrees, retains earlier sets, and sorts sets by commit time. Uncommitted changes are excluded by design.
+
 ## Effect Programs
 
 Write `drive.ts` as a default-exported, fully provided Effect, then run it directly:

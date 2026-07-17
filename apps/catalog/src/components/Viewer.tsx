@@ -46,6 +46,7 @@ export function Viewer({
 }: ViewerProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const frame = frameFor(screen, variant.id)
+  if (!frame) throw new Error(`Capture ${screen.id} is unavailable in set ${variant.id}`)
 
   useEffect(() => {
     dialogRef.current?.showModal()

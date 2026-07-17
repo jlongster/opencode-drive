@@ -76,6 +76,15 @@ export function FlowBrowser({ catalog, flows, activeFlow, variantId, onFlow, onO
             const screen = catalog.screens.find((candidate) => candidate.id === step.screenId)
             if (!screen) return undefined
             const frame = frameFor(screen, variantId)
+            if (!frame) {
+              return (
+                <li key={`${activeFlow.id}:${index}:${step.screenId}`} className="flow-step flow-step-unavailable">
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <strong>{step.title}</strong>
+                  <small>Not captured in this set</small>
+                </li>
+              )
+            }
             return (
               <li key={`${activeFlow.id}:${index}:${step.screenId}`} className="flow-step">
                 <button

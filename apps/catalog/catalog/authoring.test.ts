@@ -111,6 +111,53 @@ describe("catalog authoring", () => {
     expect(catalog.screens[0]?.title).toBe("Start screen")
   })
 
+  test("allows older capture sets to omit screens introduced later", async () => {
+    const catalog = await Effect.runPromise(
+      compileCatalog(definition, {
+        ...manifest,
+        variants: [
+          manifest.variants[0],
+          {
+            id: "older",
+            label: "Older",
+            source: "/tmp/opencode",
+            revision: "def456",
+            ref: "v2~1",
+            committedAt: "2026-07-16T10:17:51Z",
+          },
+        ],
+      }),
+    )
+
+    expect(catalog.screens[0]?.frames.map((frame) => frame.variantId)).toEqual(["baseline"])
+  })
+
+  test("rejects frames for unknown capture sets", async () => {
+    const error = await Effect.runPromise(
+      compileCatalog(definition, {
+        ...manifest,
+        captures: [{
+          id: "home",
+          title: "Home",
+          category: "system",
+          frames: [{
+            variantId: "unknown",
+            src: "captures/unknown/home.frame.json",
+            cols: 118,
+            rows: 34,
+          }],
+        }],
+      }).pipe(Effect.flip),
+    )
+
+    expect(error._tag).toBe("CatalogBuildError")
+    if (error._tag !== "CatalogBuildError") return
+    expect(error.issues).toContainEqual({
+      path: "drive-captures.json.captures.home.frames",
+      message: "Capture home references unknown variant unknown",
+    })
+  })
+
   test("reports every missing and orphaned capture together", async () => {
     const error = await Effect.runPromise(
       compileCatalog(
