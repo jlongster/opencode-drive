@@ -81,3 +81,23 @@ OPENCODE_DRIVE_SEED=42 OPENCODE_DRIVE_STEPS=20 \
 Re-run a failure with the same seed and step count. Transition preconditions constrain actions to valid idle, pending, streaming, tool-input, and running-tool states. Tool input is chunked so interruption can occur before parsing completes; advancing the tool response dispatches a blocking question tool so interruption can also occur during execution. Interrupted tool parts must settle with an aborted error in the server projection. A queued prompt must have exactly one owner across pending input and projected history. Completion can promote it into the next model step, interruption can leave it awaiting resume, and provider failure can promote it into a replacement execution. Shared invariants also require the latest prompt and settled output to remain visible, the server projection to retain the active prompt, the composer to become actionable after terminal execution, and internal transport defects to stay out of the UI.
 
 Interruption uses the existing `llm.pending` simulation capability. If OpenCode rejects a response write after terminating the invocation, Drive confirms that the invocation is no longer pending and settles the response as externally terminated. If the invocation remains pending or the query fails, Drive preserves the original write failure.
+
+## Multi-tool interleavings
+
+`multi-tool-interleavings.ts` launches shell, question, read, and glob calls in
+one assistant step. It holds the shell open while three permissions coexist,
+approves the question so its form is hidden behind the remaining read and glob
+permissions, and lets glob complete while read permission stays visible. It
+then rejects read, answers the form, and releases shell last. Permission
+rejection interrupts the whole assistant step after sibling tools settle, so
+the probe submits a recovery prompt. It verifies mixed backend states,
+settlement order, final projected tool states, post-interruption reuse, and
+preserves terminal frames for both prompt-priority states:
+
+```sh
+bun run --cwd packages/drive drive check \
+  test/manual/tui-regressions/multi-tool-interleavings.ts
+bun run --cwd packages/drive drive start --name tui-multi-tool-interleavings \
+  --script test/manual/tui-regressions/multi-tool-interleavings.ts \
+  --dev "$OPENCODE_DEV"
+```
