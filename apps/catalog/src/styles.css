@@ -67,6 +67,36 @@ button {
   cursor: pointer;
 }
 
+.capture-context-target {
+  display: block;
+}
+
+.capture-context-menu {
+  position: fixed;
+  z-index: 100;
+  display: grid;
+  width: 10.5rem;
+  padding: 0.3rem;
+  border: 1px solid var(--kit-line-strong);
+  background: #202020;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 60%);
+}
+
+.capture-context-menu button {
+  min-height: 2.2rem;
+  padding: 0 0.7rem;
+  color: var(--kit-fg);
+  font-family: var(--kit-mono);
+  font-size: 0.65rem;
+  text-align: left;
+}
+
+.capture-context-menu button:hover,
+.capture-context-menu button:focus-visible {
+  background: rgb(255 255 255 / 7%);
+  color: var(--kit-fg-strong);
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -462,12 +492,117 @@ kbd {
 
 /* ------------------------------ contact sheet ----------------------------- */
 
+.matrix-navigation {
+  position: sticky;
+  top: var(--catalog-header-height);
+  z-index: 10;
+  display: grid;
+  min-height: 2.75rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  border-bottom: 1px solid var(--kit-line);
+  background: color-mix(in srgb, var(--catalog-canvas) 94%, transparent);
+  backdrop-filter: blur(18px);
+  font-family: var(--kit-mono);
+  font-size: 0.6rem;
+}
+
+.matrix-categories,
+.matrix-states {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.matrix-categories::-webkit-scrollbar,
+.matrix-states::-webkit-scrollbar {
+  display: none;
+}
+
+.matrix-states {
+  border-left: 1px solid var(--kit-line);
+}
+
+.matrix-label,
+.matrix-navigation a,
+.matrix-navigation button {
+  display: flex;
+  min-height: 2.75rem;
+  flex: none;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.7rem;
+  color: var(--kit-fg-muted);
+  white-space: nowrap;
+}
+
+.matrix-label {
+  color: var(--kit-fg-faint);
+  font-size: 0.52rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.matrix-navigation a:hover,
+.matrix-navigation button:hover,
+.matrix-navigation button.active {
+  background: var(--kit-bg-hover);
+  color: var(--kit-fg-strong);
+}
+
+.matrix-navigation button.active {
+  box-shadow: inset 0 -1px 0 var(--catalog-accent);
+}
+
+.matrix-navigation small {
+  color: var(--kit-fg-faint);
+  font-size: 0.52rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .contact-sheet {
+  padding: 2.25rem 2rem 5rem;
+}
+
+.capture-family {
+  scroll-margin-top: calc(var(--catalog-header-height) + 3.5rem);
+}
+
+.capture-family + .capture-family {
+  margin-top: 3.25rem;
+}
+
+.capture-family-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--kit-line);
+  padding-bottom: 0.65rem;
+  font-family: var(--kit-mono);
+}
+
+.capture-family-heading h2 {
+  margin: 0;
+  color: var(--kit-fg-strong);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.capture-family-heading span {
+  color: var(--kit-fg-faint);
+  font-size: 0.55rem;
+}
+
+.capture-family-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: start;
   gap: 2.75rem 2rem;
-  padding: 2.25rem 2rem 5rem;
 }
 
 .capture-card {
@@ -584,6 +719,20 @@ kbd {
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.capture-title-wrap {
+  display: grid;
+  min-width: 0;
+  gap: 0.2rem;
+}
+
+.capture-state {
+  color: var(--kit-fg-faint);
+  font-family: var(--kit-mono);
+  font-size: 0.52rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .capture-card.selected .capture-title {
@@ -1218,7 +1367,7 @@ kbd {
 /* -------------------------------- responsive ------------------------------ */
 
 @media (max-width: 1280px) {
-  .contact-sheet {
+  .capture-family-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
@@ -1269,7 +1418,7 @@ kbd {
     width: min(16rem, 26vw);
   }
 
-  .contact-sheet {
+  .capture-family-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 2rem 1.5rem;
   }
@@ -1345,9 +1494,27 @@ kbd {
   }
 
   .contact-sheet {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 1.5rem 1rem;
     padding: 1rem 1rem 3rem;
+  }
+
+  .capture-family-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+
+  .capture-family + .capture-family {
+    margin-top: 2.25rem;
+  }
+
+  .matrix-navigation {
+    position: sticky;
+    top: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .matrix-states {
+    border-top: 1px solid var(--kit-line);
+    border-left: 0;
   }
 
   .selection-bar {

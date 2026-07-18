@@ -55,15 +55,37 @@ export interface ExecutableFlow<
   States extends NonEmpty<AnyFlowState<FlowId>>,
   Error,
   Requirements,
+  GroupId extends string = string,
 > {
   readonly id: FlowId
   readonly title: string
-  readonly group: { readonly id: string; readonly label: string }
+  readonly group: { readonly id: GroupId; readonly label: string }
   readonly description: string
   readonly states: States
   readonly run: (
     context: FlowRunContext<FlowId, States>,
   ) => Effect.Effect<void, Error, Requirements>
+}
+
+export interface ExecutableScenarioState {
+  readonly id: string
+  readonly address: string
+  readonly metadata: FlowStateMetadata<string, string>
+}
+
+export interface ExecutableScenario {
+  readonly id: string
+  readonly title: string
+  readonly group: { readonly id: string; readonly label: string }
+  readonly description: string
+  readonly llmMode: "queue" | "serve"
+  readonly clientIsolation: "shared" | "isolated"
+  readonly states: ReadonlyArray<ExecutableScenarioState>
+  readonly run: (options: {
+    readonly driver: Driver
+    readonly through?: string
+    readonly capture: (state: ExecutableScenarioState) => Effect.Effect<void, unknown>
+  }) => Effect.Effect<void, unknown>
 }
 
 interface FlowAuthor<
@@ -94,6 +116,7 @@ export function defineExecutableFlow<
   ScreenLabels extends TaxonomyDefinition,
   UiElements extends TaxonomyDefinition,
   const FlowId extends string,
+  const GroupId extends string,
   const States extends NonEmpty<AnyFlowState<FlowId>>,
   Error,
   Requirements,
@@ -102,7 +125,7 @@ export function defineExecutableFlow<
   definition: {
     readonly id: FlowId
     readonly title: string
-    readonly group: { readonly id: string; readonly label: string }
+    readonly group: { readonly id: GroupId; readonly label: string }
     readonly description: string
   },
   build: (
@@ -112,7 +135,7 @@ export function defineExecutableFlow<
       TaxonomyItemId<UiElements>
     >,
   ) => FlowProgram<FlowId, States, Error, Requirements>,
-): ExecutableFlow<FlowId, States, Error, Requirements> {
+): ExecutableFlow<FlowId, States, Error, Requirements, GroupId> {
   void taxonomies
   const author: FlowAuthor<
     FlowId,
@@ -224,27 +247,37 @@ export function executeFlow<
   })
 }
 
-export function screensFromFlow<
+export function executableScenario<
   const FlowId extends string,
   const States extends NonEmpty<AnyFlowState<FlowId>>,
->(flow: ExecutableFlow<FlowId, States, unknown, unknown>) {
-  return Object.fromEntries(
-    flow.states.map((state) => [state.id, state.metadata.screen]),
-  ) as {
-    readonly [State in States[number] as State["id"]]: State["metadata"]["screen"]
-  }
-}
-
-export function stepsFromFlow<
-  const FlowId extends string,
-  const States extends NonEmpty<AnyFlowState<FlowId>>,
->(flow: ExecutableFlow<FlowId, States, unknown, unknown>) {
-  return flow.states.map((state) => ({
-    capture: state.id,
-    ...state.metadata.step,
-  })) as {
-    readonly [Index in keyof States]: States[Index] extends FlowState<FlowId, infer StateId>
-      ? FlowStepDefinition<StateId>
-      : never
+  FlowError,
+  const GroupId extends string,
+>(
+  flow: ExecutableFlow<FlowId, States, FlowError, never, GroupId>,
+  options: {
+    readonly llmMode?: "queue" | "serve"
+    readonly clientIsolation?: "shared" | "isolated"
+  } = {},
+): ExecutableScenario & {
+  readonly flow: ExecutableFlow<FlowId, States, FlowError, never, GroupId>
+} {
+  return {
+    flow,
+    id: flow.id,
+    title: flow.title,
+    group: flow.group,
+    description: flow.description,
+    llmMode: options.llmMode ?? "queue",
+    clientIsolation: options.clientIsolation ?? "shared",
+    states: flow.states,
+    run: ({ driver, through, capture }) => {
+      const target = through === undefined
+        ? undefined
+        : flow.states.find((state) => state.id === through)
+      if (through !== undefined && target === undefined) {
+        return Effect.fail(new Error(`Unknown state ${JSON.stringify(`${flow.id}/${through}`)}`))
+      }
+      return executeFlow(flow, { driver, through: target, capture })
+    },
   }
 }

@@ -1,8 +1,5 @@
 import { defineScreens, type ScreenId } from "../dsl"
-import { screensFromFlow } from "../flow"
-import { patchSuccessFlow } from "../../scenarios/tools/patch-success"
-import { shellLifecycleFlow } from "../../scenarios/tools/shell-lifecycle"
-import { subagentLifecycleFlow } from "../../scenarios/subagents/subagent-lifecycle"
+import { executableScreens } from "../../scenarios"
 import { taxonomies } from "./taxonomies"
 
 export const screens = defineScreens(taxonomies, {
@@ -136,9 +133,7 @@ export const screens = defineScreens(taxonomies, {
     features: "skill",
     states: "default",
   },
-  ...screensFromFlow(patchSuccessFlow),
-  ...screensFromFlow(shellLifecycleFlow),
-  ...screensFromFlow(subagentLifecycleFlow),
+  ...executableScreens,
   "session-rename": {
     title: "Rename session",
     category: "session",

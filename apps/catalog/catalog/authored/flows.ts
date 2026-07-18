@@ -1,8 +1,5 @@
 import { defineFlows } from "../dsl"
-import { stepsFromFlow } from "../flow"
-import { patchSuccessFlow } from "../../scenarios/tools/patch-success"
-import { shellLifecycleFlow } from "../../scenarios/tools/shell-lifecycle"
-import { subagentLifecycleFlow } from "../../scenarios/subagents/subagent-lifecycle"
+import { executableFlowDefinitions } from "../../scenarios"
 import { screens } from "./screens"
 
 export const flowGroups = defineFlows(screens, {
@@ -61,18 +58,7 @@ export const flowGroups = defineFlows(screens, {
   "tool-use": {
     label: "Tool use",
     flows: {
-      "patch-success-lifecycle": {
-        title: patchSuccessFlow.title,
-        description: patchSuccessFlow.description,
-        replayable: true,
-        steps: stepsFromFlow(patchSuccessFlow),
-      },
-      "shell-lifecycle": {
-        title: shellLifecycleFlow.title,
-        description: shellLifecycleFlow.description,
-        replayable: true,
-        steps: stepsFromFlow(shellLifecycleFlow),
-      },
+      ...executableFlowDefinitions("tool-use"),
       "approving-a-tool-call": {
         title: "Approving a tool call",
         description: "Review a requested operation and choose its permission scope.",
@@ -95,14 +81,11 @@ export const flowGroups = defineFlows(screens, {
   },
   subagents: {
     label: "Subagents",
-    flows: {
-      "subagent-lifecycle": {
-        title: subagentLifecycleFlow.title,
-        description: subagentLifecycleFlow.description,
-        replayable: true,
-        steps: stepsFromFlow(subagentLifecycleFlow),
-      },
-    },
+    flows: executableFlowDefinitions("subagents"),
+  },
+  responses: {
+    label: "Responses",
+    flows: executableFlowDefinitions("responses"),
   },
   configuration: {
     label: "Configuration",

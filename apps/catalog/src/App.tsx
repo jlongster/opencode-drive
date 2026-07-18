@@ -11,8 +11,11 @@ import { CommandPalette } from "./components/CommandPalette"
 import { ContactSheet } from "./components/ContactSheet"
 import { FlowBrowser } from "./components/FlowBrowser"
 import { Header } from "./components/Header"
+import { MatrixNavigation } from "./components/MatrixNavigation"
 import { SelectionBar } from "./components/SelectionBar"
 import { Viewer } from "./components/Viewer"
+import { preloadFrame } from "./components/TerminalFrame"
+import { catalogDeepLink, catalogRootUrl, readCatalogLocation } from "./deep-link"
 
 interface AppProps {
   readonly catalog: Catalog
@@ -50,6 +53,7 @@ type UiAction =
   | { readonly type: "open-palette" }
   | { readonly type: "close-palette" }
   | { readonly type: "toggle-palette" }
+  | { readonly type: "restore-location"; readonly screenId?: string; readonly flowId?: string }
 
 function toggle(values: ReadonlyArray<string>, value: string): ReadonlyArray<string> {
   return values.includes(value) ? values.filter((candidate) => candidate !== value) : [...values, value]
@@ -148,25 +152,51 @@ function uiReducer(state: UiState, action: UiAction): UiState {
       return state.paletteOpen
         ? uiReducer(state, { type: "close-palette" })
         : { ...state, paletteOpen: true }
+    case "restore-location":
+      return {
+        ...state,
+        mode: action.flowId ? "flows" : state.mode,
+        activeFlowId: action.flowId ?? state.activeFlowId,
+        selectedScreenId: action.screenId,
+        viewerOpen: action.screenId !== undefined,
+      }
   }
 }
 
 export function App({ catalog }: AppProps) {
+  const initialLocation = readCatalogLocation(new URL(window.location.href))
+  const initialScreen = catalog.screens.some((screen) => screen.id === initialLocation.screenId)
+    ? initialLocation.screenId
+    : undefined
+  const initialFlow = catalog.flows.some((flow) => flow.id === initialLocation.flowId)
+    ? initialLocation.flowId
+    : undefined
   const [ui, dispatch] = useReducer(uiReducer, {
-    mode: "screens",
+    mode: initialFlow ? "flows" : "screens",
     query: "",
     screenLabels: [],
     uiElements: [],
     facets: emptyFacetSelections,
-    activeFlowId: catalog.flows[0]?.id,
-    selectedScreenId: catalog.screens[0]?.id,
-    viewerOpen: false,
+    activeFlowId: initialFlow ?? catalog.flows[0]?.id,
+    selectedScreenId: initialScreen ?? catalog.screens[0]?.id,
+    viewerOpen: initialScreen !== undefined,
     paletteOpen: false,
     gridFocusTick: 0,
   })
-  const [variantIndex, setVariantIndex] = useState(0)
+  const [variantIndex, setVariantIndex] = useState(() => {
+    const index = catalog.variants.findIndex((variant) => variant.id === initialLocation.variantId)
+    return Math.max(0, index)
+  })
   const searchRef = useRef<HTMLInputElement>(null)
   const activeVariant = catalog.variants[variantIndex] ?? catalog.variants[0]
+
+  const deepLinkFor = (screenId: string, flowId?: string) =>
+    catalogDeepLink(screenId, { flowId, variantId: activeVariant.id })
+
+  const openViewer = (screenId: string, flowId?: string) => {
+    window.history.pushState(null, "", deepLinkFor(screenId, flowId))
+    dispatch({ type: "open-viewer", id: screenId })
+  }
   const availableScreens = useMemo(
     () => catalog.screens.filter((screen) => frameFor(screen, activeVariant.id) !== undefined),
     [catalog.screens, activeVariant.id],
@@ -184,13 +214,15 @@ export function App({ catalog }: AppProps) {
   )
   const flows = useMemo(() => filterFlows(catalog.flows, ui.query), [catalog.flows, ui.query])
   const activeFlow = flows.find((flow) => flow.id === ui.activeFlowId) ?? flows[0]
-  const viewerScreens =
-    ui.mode === "flows" && activeFlow
+  const viewerScreens = useMemo(
+    () => ui.mode === "flows" && activeFlow
       ? activeFlow.steps.flatMap((step) => {
           const screen = availableScreens.find((candidate) => candidate.id === step.screenId)
           return screen ? [screen] : []
         })
-      : screens
+      : screens,
+    [activeFlow, availableScreens, screens, ui.mode],
+  )
   const selectedId = viewerScreens.some((screen) => screen.id === ui.selectedScreenId)
     ? ui.selectedScreenId
     : viewerScreens[0]?.id
@@ -210,7 +242,10 @@ export function App({ catalog }: AppProps) {
     if (viewerScreens.length === 0) return
     const current = viewerScreens.findIndex((screen) => screen.id === selectedId)
     const next = viewerScreens[(current + direction + viewerScreens.length) % viewerScreens.length]
-    if (next) dispatch({ type: "navigate", id: next.id })
+    if (next) {
+      window.history.replaceState(null, "", deepLinkFor(next.id, ui.mode === "flows" ? activeFlow?.id : undefined))
+      dispatch({ type: "navigate", id: next.id })
+    }
   }
 
   const navigateVariant = (direction: 1 | -1) => {
@@ -230,7 +265,7 @@ export function App({ catalog }: AppProps) {
       target instanceof HTMLTextAreaElement ||
       (target instanceof HTMLElement && target.isContentEditable)
     if (editing) return
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+    if (event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       event.preventDefault()
       navigateVariant(event.key === "ArrowUp" ? -1 : 1)
       return
@@ -253,6 +288,45 @@ export function App({ catalog }: AppProps) {
     window.addEventListener("keydown", listener)
     return () => window.removeEventListener("keydown", listener)
   }, [])
+
+  useEffect(() => {
+    if (!ui.viewerOpen || !selectedScreen) return
+    window.history.replaceState(
+      null,
+      "",
+      catalogDeepLink(selectedScreen.id, {
+        flowId: ui.mode === "flows" ? activeFlow?.id : undefined,
+        variantId: activeVariant.id,
+      }),
+    )
+  }, [activeVariant.id, activeFlow?.id, selectedScreen, ui.mode, ui.viewerOpen])
+
+  useEffect(() => {
+    if (!ui.viewerOpen || selectedId === undefined || viewerScreens.length < 2) return
+    const current = viewerScreens.findIndex((screen) => screen.id === selectedId)
+    for (const offset of [-1, 1]) {
+      const screen = viewerScreens[(current + offset + viewerScreens.length) % viewerScreens.length]
+      const frame = screen && frameFor(screen, activeVariant.id)
+      if (frame) void preloadFrame(frame)
+    }
+  }, [activeVariant.id, selectedId, ui.viewerOpen, viewerScreens])
+
+  useEffect(() => {
+    const restore = () => {
+      const location = readCatalogLocation(new URL(window.location.href))
+      const screenId = catalog.screens.some((screen) => screen.id === location.screenId)
+        ? location.screenId
+        : undefined
+      const flowId = catalog.flows.some((flow) => flow.id === location.flowId)
+        ? location.flowId
+        : undefined
+      const nextVariant = catalog.variants.findIndex((variant) => variant.id === location.variantId)
+      if (nextVariant >= 0) setVariantIndex(nextVariant)
+      dispatch({ type: "restore-location", screenId, flowId })
+    }
+    window.addEventListener("popstate", restore)
+    return () => window.removeEventListener("popstate", restore)
+  }, [catalog])
 
   const taxonomyType: Taxonomy = ui.mode === "ui-elements" ? "ui-element" : "screen"
 
@@ -282,14 +356,22 @@ export function App({ catalog }: AppProps) {
           onVariantSelect={(id) => setVariantIndex(Math.max(0, catalog.variants.findIndex((variant) => variant.id === id)))}
         />
         {ui.mode !== "flows" ? (
-          <SelectionBar
-            taxonomy={taxonomy}
-            taxonomyValues={taxonomyValues}
-            facets={ui.facets}
-            onTaxonomy={(value) => dispatch({ type: "toggle-taxonomy", taxonomy: taxonomyType, value })}
-            onFacet={(facet, value) => dispatch({ type: "toggle-facet", facet, value })}
-            onClear={() => dispatch({ type: "reset-view" })}
-          />
+          <>
+            <SelectionBar
+              taxonomy={taxonomy}
+              taxonomyValues={taxonomyValues}
+              facets={ui.facets}
+              onTaxonomy={(value) => dispatch({ type: "toggle-taxonomy", taxonomy: taxonomyType, value })}
+              onFacet={(facet, value) => dispatch({ type: "toggle-facet", facet, value })}
+              onClear={() => dispatch({ type: "reset-view" })}
+            />
+            <MatrixNavigation
+              screens={screens}
+              states={catalog.states}
+              selectedStates={ui.facets.state}
+              onState={(value) => dispatch({ type: "toggle-facet", facet: "state", value })}
+            />
+          </>
         ) : undefined}
         {ui.mode === "flows" ? (
           <FlowBrowser
@@ -298,7 +380,8 @@ export function App({ catalog }: AppProps) {
             activeFlow={activeFlow}
             variantId={activeVariant.id}
             onFlow={(id) => dispatch({ type: "select-flow", id })}
-            onOpen={(id) => dispatch({ type: "open-viewer", id })}
+            onOpen={(id) => openViewer(id, activeFlow?.id)}
+            deepLinkFor={deepLinkFor}
           />
         ) : (
           <ContactSheet
@@ -308,17 +391,18 @@ export function App({ catalog }: AppProps) {
             keyboardEnabled={!ui.viewerOpen && !ui.paletteOpen}
             variantId={activeVariant.id}
             onSelect={(id) => dispatch({ type: "select-screen", id })}
-            onOpen={(id) => dispatch({ type: "open-viewer", id })}
+            onOpen={(id) => openViewer(id)}
+            deepLinkFor={deepLinkFor}
           />
         )}
       </main>
       {ui.viewerOpen && selectedScreen ? (
         <Viewer
-          key={selectedScreen.id}
           screen={selectedScreen}
           identifier={ui.mode === "flows" && activeFlow?.replayable
             ? `${activeFlow.id}/${selectedScreen.id}`
             : selectedScreen.id}
+          deepLink={deepLinkFor(selectedScreen.id, ui.mode === "flows" ? activeFlow?.id : undefined)}
           variant={activeVariant}
           variants={catalog.variants}
           variantPosition={variantIndex + 1}
@@ -327,7 +411,10 @@ export function App({ catalog }: AppProps) {
           position={viewerScreens.findIndex((screen) => screen.id === selectedScreen.id) + 1}
           total={viewerScreens.length}
           active={!ui.paletteOpen}
-          onClose={() => dispatch({ type: "close-viewer" })}
+          onClose={() => {
+            window.history.pushState(null, "", catalogRootUrl())
+            dispatch({ type: "close-viewer" })
+          }}
           onNavigate={navigateViewer}
           onVariant={navigateVariant}
           onVariantSelect={(id) => setVariantIndex(Math.max(0, catalog.variants.findIndex((variant) => variant.id === id)))}

@@ -4,7 +4,7 @@ Production: <https://catalog.kitlangton.dev>
 
 Capture a reproducible catalog of OpenCode terminal states from local checkouts, browse every state in one web app, and flip between themes or branches without changing the selected screen.
 
-The catalog currently contains 23 scripted states covering the home screen, command and model pickers, integrations, themes, MCPs, permissions, questions, sessions, subagents, shell output, toasts, and the diff viewer.
+The catalog currently contains 57 scripted states covering navigation, sessions, assistant responses, questions, subagents, shell, file patches, reads, project search, web tools, permissions, toasts, and review surfaces.
 
 ## Prerequisites
 
@@ -37,6 +37,19 @@ Open the URL printed by `bun run dev`.
 
 Each revision is resolved to an immutable commit and captured from an isolated detached worktree. Set IDs are derived from the commit SHA, prior sets remain in the manifest, and rerunning the same commit/theme replaces only that set. Sets are ordered by commit time, so the newest commit is selected when the catalog opens.
 
+Prepared revision worktrees are cached under `.tmp/capture-worktrees`. Warm captures reuse the exact resolved commit and its installed dependencies; pass `--fresh` to deliberately rebuild the prepared checkout. Full capture groups scenarios by their declared LLM response mode and reuses one OpenCode process within each group. Frames are staged under `.tmp` and replace the revision directory only after every scenario succeeds.
+
+During scenario development, execute one registered flow without changing the authoritative manifest:
+
+```bash
+bun run capture -- \
+  --opencode $HOME/code/opencode \
+  --revision v2 \
+  --flow search-lifecycle
+```
+
+Preview frames are written under `.tmp/capture-runs`. The scenario registry in `scenarios/index.ts` is authoritative for capture, canonical replay addresses, authored screens, and replayable flow metadata.
+
 When `--revision` is omitted, capture resolves `origin/v2`; it never trusts the checkout's current `HEAD`, which may be a stale feature branch.
 
 ## Compare Themes
@@ -61,6 +74,10 @@ In the catalog:
 - Use the capture-set picker or press up/down to compare revisions and themes without losing the current screen.
 - In the viewer, press left/right to move through flow steps and up/down to switch capture sets.
 - Use **Copy ID** to copy the active flow state address, or the capture ID when browsing screens directly.
+- Open captures have stable `screen`, `flow`, and `set` URL parameters for sharing an exact catalog state.
+- Right-click any terminal image to copy its canonical ID or deep link.
+- Click a card to open its full-screen viewer and press `Escape` to close it.
+- Press `Cmd+K` or `Ctrl+K` to search screens, labels, UI elements, and flows.
 
 Reproduce a registered executable state against an OpenCode checkout:
 
@@ -70,10 +87,6 @@ bun run reproduce -- patch-success-lifecycle/permission-prompt \
 ```
 
 The command prints the path to a normalized terminal frame. Only states from flows registered in `scenarios/index.ts` are currently reproducible; other catalog flows remain browse-only until their recipes are migrated.
-- Click a card to open its full-screen viewer.
-- Press up or down in the viewer to move between screens.
-- Press `Escape` to close the viewer.
-- Press `Cmd+K` or `Ctrl+K` to search screens, labels, UI elements, and flows.
 
 ## Compare Branches
 

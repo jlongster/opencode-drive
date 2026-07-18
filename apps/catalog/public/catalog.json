@@ -7,7 +7,7 @@
       "label": "5d5b33f",
       "source": "opencode-v2-latest",
       "revision": "5d5b33f195cc664d376ea85503f49433a05a3049",
-      "ref": "origin/v2",
+      "ref": "5d5b33f195cc664d376ea85503f49433a05a3049",
       "committedAt": "2026-07-17T19:04:40+02:00"
     },
     {
@@ -345,6 +345,7 @@
   ],
   "features": [
     "agent",
+    "assistant",
     "commands",
     "debug",
     "device",
@@ -358,6 +359,9 @@
     "patch",
     "permission",
     "question",
+    "read",
+    "response",
+    "search",
     "session",
     "shell",
     "shortcuts",
@@ -366,13 +370,15 @@
     "system",
     "theme",
     "thinking",
-    "tool"
+    "tool",
+    "web"
   ],
   "states": [
     "confirmation",
     "default",
     "empty",
     "error",
+    "pending",
     "populated",
     "running",
     "streaming",
@@ -1324,6 +1330,7 @@
         "approval",
         "permission",
         "tool",
+        "patch",
         "confirmation"
       ],
       "screenLabels": [
@@ -1345,7 +1352,8 @@
       ],
       "features": [
         "permission",
-        "tool"
+        "tool",
+        "patch"
       ],
       "states": [
         "confirmation"
@@ -2184,6 +2192,1378 @@
       ]
     },
     {
+      "id": "glob-success",
+      "title": "Glob finds files",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "status-indicator",
+        "inline",
+        "status",
+        "tool",
+        "search",
+        "success"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "search"
+      ],
+      "states": [
+        "success"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/glob-success.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "glob-empty",
+      "title": "Glob finds no files",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "empty-state",
+        "inline",
+        "status",
+        "tool",
+        "search",
+        "empty"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "empty-state"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "search"
+      ],
+      "states": [
+        "empty"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/glob-empty.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "grouped-exploration",
+      "title": "Grouped project exploration",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "status-indicator",
+        "inline",
+        "status",
+        "tool",
+        "search",
+        "running"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "search"
+      ],
+      "states": [
+        "running"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/grouped-exploration.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "grep-success",
+      "title": "Grep finds matches",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "status-indicator",
+        "inline",
+        "status",
+        "tool",
+        "search",
+        "success"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "search"
+      ],
+      "states": [
+        "success"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/grep-success.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "grep-empty",
+      "title": "Grep finds no matches",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "empty-state",
+        "inline",
+        "status",
+        "tool",
+        "search",
+        "empty"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "empty-state"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "search"
+      ],
+      "states": [
+        "empty"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/grep-empty.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "grep-failure",
+      "title": "Grep pattern fails",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "error-recovery",
+        "transcript",
+        "tool-card",
+        "error-report",
+        "inline",
+        "error-report",
+        "tool",
+        "search",
+        "error"
+      ],
+      "screenLabels": [
+        "tool-execution",
+        "error-recovery"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "error-report"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "error-report"
+      ],
+      "features": [
+        "tool",
+        "search"
+      ],
+      "states": [
+        "error"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/grep-failure.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "webfetch-streaming",
+      "title": "WebFetch streaming",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "status-indicator",
+        "inline",
+        "status",
+        "tool",
+        "web",
+        "streaming"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "web"
+      ],
+      "states": [
+        "streaming"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/webfetch-streaming.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "webfetch-success",
+      "title": "WebFetch succeeds",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "confirmation",
+        "inline",
+        "status",
+        "tool",
+        "web",
+        "success"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "confirmation"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "web"
+      ],
+      "states": [
+        "success"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/webfetch-success.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "websearch-running",
+      "title": "WebSearch running",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "status-indicator",
+        "inline",
+        "status",
+        "tool",
+        "web",
+        "search",
+        "running"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "web",
+        "search"
+      ],
+      "states": [
+        "running"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/websearch-running.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "websearch-failure",
+      "title": "WebSearch fails",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "error-recovery",
+        "transcript",
+        "tool-card",
+        "error-report",
+        "inline",
+        "error-report",
+        "tool",
+        "web",
+        "search",
+        "error"
+      ],
+      "screenLabels": [
+        "tool-execution",
+        "error-recovery"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "error-report"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "error-report"
+      ],
+      "features": [
+        "tool",
+        "web",
+        "search"
+      ],
+      "states": [
+        "error"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/websearch-failure.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "question-input-streaming",
+      "title": "Question input streaming",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "status-indicator",
+        "inline",
+        "status",
+        "tool",
+        "question",
+        "streaming"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "question"
+      ],
+      "states": [
+        "streaming"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/question-input-streaming.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "question-awaiting-form",
+      "title": "Question awaiting form",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "question-response",
+        "question-prompt",
+        "button-group",
+        "keyboard-hints",
+        "inline",
+        "form",
+        "tool",
+        "question",
+        "pending"
+      ],
+      "screenLabels": [
+        "tool-execution",
+        "question-response"
+      ],
+      "uiElements": [
+        "question-prompt",
+        "button-group",
+        "keyboard-hints"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "form"
+      ],
+      "features": [
+        "tool",
+        "question"
+      ],
+      "states": [
+        "pending"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/question-awaiting-form.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "question-review",
+      "title": "Question review",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "question-response",
+        "question-prompt",
+        "confirmation",
+        "keyboard-hints",
+        "inline",
+        "form",
+        "tool",
+        "question",
+        "confirmation"
+      ],
+      "screenLabels": [
+        "tool-execution",
+        "question-response"
+      ],
+      "uiElements": [
+        "question-prompt",
+        "confirmation",
+        "keyboard-hints"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "form"
+      ],
+      "features": [
+        "tool",
+        "question"
+      ],
+      "states": [
+        "confirmation"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/question-review.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "question-succeeded",
+      "title": "Question succeeded",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "confirmation",
+        "inline",
+        "status",
+        "tool",
+        "question",
+        "success"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "confirmation"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "question"
+      ],
+      "states": [
+        "success"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/question-succeeded.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "question-denied",
+      "title": "Question denied",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "error-recovery",
+        "transcript",
+        "tool-card",
+        "destructive-action",
+        "inline",
+        "status",
+        "tool",
+        "question",
+        "error"
+      ],
+      "screenLabels": [
+        "tool-execution",
+        "error-recovery"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "destructive-action"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "question"
+      ],
+      "states": [
+        "error"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/question-denied.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "patch-created",
+      "title": "Patch created file",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "confirmation",
+        "inline",
+        "status",
+        "tool",
+        "patch",
+        "success"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "confirmation"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "patch"
+      ],
+      "states": [
+        "success"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/patch-created.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "patch-updated",
+      "title": "Patch updated file",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "confirmation",
+        "inline",
+        "status",
+        "tool",
+        "patch",
+        "success"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "confirmation"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "patch"
+      ],
+      "states": [
+        "success"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/patch-updated.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "patch-deleted",
+      "title": "Patch deleted file",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "confirmation",
+        "inline",
+        "status",
+        "tool",
+        "patch",
+        "success"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "confirmation"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "patch"
+      ],
+      "states": [
+        "success"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/patch-deleted.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "patch-failed",
+      "title": "Patch failed",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "error-recovery",
+        "transcript",
+        "tool-card",
+        "error-report",
+        "inline",
+        "error-report",
+        "tool",
+        "patch",
+        "error"
+      ],
+      "screenLabels": [
+        "tool-execution",
+        "error-recovery"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "error-report"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "error-report"
+      ],
+      "features": [
+        "tool",
+        "patch"
+      ],
+      "states": [
+        "error"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/patch-failed.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "assistant-response-succeeded",
+      "title": "Assistant response succeeded",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "question-response",
+        "transcript",
+        "confirmation",
+        "inline",
+        "status",
+        "assistant",
+        "response",
+        "success"
+      ],
+      "screenLabels": [
+        "question-response"
+      ],
+      "uiElements": [
+        "transcript",
+        "confirmation"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "assistant",
+        "response"
+      ],
+      "states": [
+        "success"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/assistant-response-succeeded.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "assistant-response-failed",
+      "title": "Assistant response failed",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "question-response",
+        "error-recovery",
+        "transcript",
+        "error-report",
+        "inline",
+        "error-report",
+        "assistant",
+        "response",
+        "error"
+      ],
+      "screenLabels": [
+        "question-response",
+        "error-recovery"
+      ],
+      "uiElements": [
+        "transcript",
+        "error-report"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "error-report"
+      ],
+      "features": [
+        "assistant",
+        "response"
+      ],
+      "states": [
+        "error"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/assistant-response-failed.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "assistant-response-interrupted",
+      "title": "Assistant response interrupted",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "question-response",
+        "error-recovery",
+        "transcript",
+        "status-indicator",
+        "inline",
+        "status",
+        "assistant",
+        "response",
+        "error"
+      ],
+      "screenLabels": [
+        "question-response",
+        "error-recovery"
+      ],
+      "uiElements": [
+        "transcript",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "assistant",
+        "response"
+      ],
+      "states": [
+        "error"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/assistant-response-interrupted.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "read-input-streaming",
+      "title": "Read input streaming",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "status-indicator",
+        "inline",
+        "status",
+        "tool",
+        "read",
+        "streaming"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "read"
+      ],
+      "states": [
+        "streaming"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/read-input-streaming.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "read-permission",
+      "title": "Read permission",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "inline-prompt",
+        "approval-actions",
+        "button-group",
+        "keyboard-hints",
+        "confirmation",
+        "inline",
+        "approval",
+        "tool",
+        "read",
+        "confirmation"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "inline-prompt",
+        "approval-actions",
+        "button-group",
+        "keyboard-hints",
+        "confirmation"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "approval"
+      ],
+      "features": [
+        "tool",
+        "read"
+      ],
+      "states": [
+        "confirmation"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/read-permission.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "read-succeeded",
+      "title": "Read succeeded",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "transcript",
+        "tool-card",
+        "status-indicator",
+        "inline",
+        "status",
+        "tool",
+        "read",
+        "success"
+      ],
+      "screenLabels": [
+        "tool-execution"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "read"
+      ],
+      "states": [
+        "success"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/read-succeeded.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
+      "id": "read-denied",
+      "title": "Read denied",
+      "category": "session",
+      "summary": "",
+      "tags": [
+        "tool-execution",
+        "error-recovery",
+        "transcript",
+        "tool-card",
+        "status-indicator",
+        "inline",
+        "status",
+        "tool",
+        "read",
+        "error"
+      ],
+      "screenLabels": [
+        "tool-execution",
+        "error-recovery"
+      ],
+      "uiElements": [
+        "transcript",
+        "tool-card",
+        "status-indicator"
+      ],
+      "surfaces": [
+        "inline"
+      ],
+      "patterns": [
+        "status"
+      ],
+      "features": [
+        "tool",
+        "read"
+      ],
+      "states": [
+        "error"
+      ],
+      "dimensions": [],
+      "viewport": {
+        "cols": 118,
+        "rows": 34
+      },
+      "variations": [],
+      "frames": [
+        {
+          "variantId": "5d5b33f195cc",
+          "src": "captures/5d5b33f195cc/read-denied.frame.json",
+          "cols": 118,
+          "rows": 34
+        }
+      ]
+    },
+    {
       "id": "subagent-running",
       "title": "Subagent running",
       "category": "session",
@@ -2501,6 +3881,143 @@
       ]
     },
     {
+      "id": "search-lifecycle",
+      "title": "Project search lifecycle",
+      "group": "Tool use",
+      "description": "Run built-in glob and grep tools through distinct streaming, grouped, success, empty, and failure states.",
+      "replayable": true,
+      "steps": [
+        {
+          "screenId": "glob-success",
+          "title": "Glob succeeds"
+        },
+        {
+          "screenId": "glob-empty",
+          "title": "Glob is empty"
+        },
+        {
+          "screenId": "grouped-exploration",
+          "title": "Glob and grep run together"
+        },
+        {
+          "screenId": "grep-success",
+          "title": "Grep succeeds"
+        },
+        {
+          "screenId": "grep-empty",
+          "title": "Grep is empty"
+        },
+        {
+          "screenId": "grep-failure",
+          "title": "Grep fails"
+        }
+      ]
+    },
+    {
+      "id": "web-lifecycle",
+      "title": "Web tool lifecycle",
+      "group": "Tool use",
+      "description": "Run the v2 WebFetch and WebSearch renderers with real tool calls.",
+      "replayable": true,
+      "steps": [
+        {
+          "screenId": "webfetch-streaming",
+          "title": "WebFetch input streams"
+        },
+        {
+          "screenId": "webfetch-success",
+          "title": "WebFetch succeeds"
+        },
+        {
+          "screenId": "websearch-running",
+          "title": "WebSearch runs"
+        },
+        {
+          "screenId": "websearch-failure",
+          "title": "WebSearch reports provider failure"
+        }
+      ]
+    },
+    {
+      "id": "question-lifecycle",
+      "title": "Question lifecycle",
+      "group": "Tool use",
+      "description": "Stream a question call, answer its form, review it, submit it, and deny a second call.",
+      "replayable": true,
+      "steps": [
+        {
+          "screenId": "question-input-streaming",
+          "title": "Question input streams"
+        },
+        {
+          "screenId": "question-awaiting-form",
+          "title": "Question awaits an answer"
+        },
+        {
+          "screenId": "question-review",
+          "title": "Answers are reviewed"
+        },
+        {
+          "screenId": "question-succeeded",
+          "title": "Answers are submitted"
+        },
+        {
+          "screenId": "question-denied",
+          "title": "Question is denied"
+        }
+      ]
+    },
+    {
+      "id": "read-file-lifecycle",
+      "title": "Read file lifecycle",
+      "group": "Tool use",
+      "description": "Stream a read call, approve it, then observe success and denial.",
+      "replayable": true,
+      "steps": [
+        {
+          "screenId": "read-input-streaming",
+          "title": "Input streams"
+        },
+        {
+          "screenId": "read-permission",
+          "title": "Permission is requested"
+        },
+        {
+          "screenId": "read-succeeded",
+          "title": "Read succeeds"
+        },
+        {
+          "screenId": "read-denied",
+          "title": "Read is denied"
+        }
+      ]
+    },
+    {
+      "id": "patch-file-changes",
+      "title": "Patch file changes",
+      "group": "Tool use",
+      "description": "Apply real patches that create, update, and delete files, then show verification failure.",
+      "replayable": true,
+      "steps": [
+        {
+          "screenId": "patch-created",
+          "title": "Patch creates a file"
+        },
+        {
+          "screenId": "patch-updated",
+          "title": "Patch updates a file"
+        },
+        {
+          "screenId": "patch-deleted",
+          "title": "Patch deletes a file"
+        },
+        {
+          "screenId": "patch-failed",
+          "title": "Patch fails verification"
+        }
+      ]
+    },
+    {
       "id": "approving-a-tool-call",
       "title": "Approving a tool call",
       "group": "Tool use",
@@ -2546,6 +4063,27 @@
         {
           "screenId": "subagent-session",
           "title": "Open the subagent session"
+        }
+      ]
+    },
+    {
+      "id": "assistant-lifecycle",
+      "title": "Assistant response lifecycle",
+      "group": "Responses",
+      "description": "Observe assistant text while it streams, succeeds, fails, and is interrupted.",
+      "replayable": true,
+      "steps": [
+        {
+          "screenId": "assistant-response-succeeded",
+          "title": "Response succeeds"
+        },
+        {
+          "screenId": "assistant-response-failed",
+          "title": "Response fails"
+        },
+        {
+          "screenId": "assistant-response-interrupted",
+          "title": "Response is interrupted"
         }
       ]
     },

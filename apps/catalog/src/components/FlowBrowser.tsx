@@ -2,6 +2,7 @@ import type { Catalog, Flow } from "../catalog"
 import { frameFor } from "../catalog"
 import { IdChip } from "./IdChip"
 import { TerminalFrame } from "./TerminalFrame"
+import { CaptureContextMenu } from "./CaptureContextMenu"
 
 interface FlowBrowserProps {
   readonly catalog: Catalog
@@ -10,9 +11,10 @@ interface FlowBrowserProps {
   readonly variantId: string
   readonly onFlow: (id: string) => void
   readonly onOpen: (screenId: string) => void
+  readonly deepLinkFor: (screenId: string, flowId: string) => string
 }
 
-export function FlowBrowser({ catalog, flows, activeFlow, variantId, onFlow, onOpen }: FlowBrowserProps) {
+export function FlowBrowser({ catalog, flows, activeFlow, variantId, onFlow, onOpen, deepLinkFor }: FlowBrowserProps) {
   const groupedFlows = new Map<string, Array<Flow>>()
   for (const flow of flows) {
     const grouped = groupedFlows.get(flow.group)
@@ -93,9 +95,14 @@ export function FlowBrowser({ catalog, flows, activeFlow, variantId, onFlow, onO
                   aria-label={`Open ${step.title}`}
                   onClick={() => onOpen(screen.id)}
                 >
-                  <span className="flow-frame">
-                    <TerminalFrame frame={frame} label={screen.title} lazy />
-                  </span>
+                    <CaptureContextMenu
+                      identifier={activeFlow.replayable ? `${activeFlow.id}/${screen.id}` : screen.id}
+                      deepLink={deepLinkFor(screen.id, activeFlow.id)}
+                    >
+                      <span className="flow-frame">
+                        <TerminalFrame frame={frame} label={screen.title} lazy />
+                      </span>
+                    </CaptureContextMenu>
                 </button>
                 <footer className="flow-step-meta">
                   <span className="flow-step-number">{String(index + 1).padStart(2, "0")}</span>
