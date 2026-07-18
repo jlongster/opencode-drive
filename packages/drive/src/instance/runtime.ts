@@ -4,15 +4,17 @@ import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as FileSystem from "effect/FileSystem"
 import * as Ref from "effect/Ref"
-import * as Schedule from "effect/Schedule"
-import * as Schema from "effect/Schema"
 import * as Semaphore from "effect/Semaphore"
 import * as Scope from "effect/Scope"
 import { ChildProcessSpawner } from "effect/unstable/process"
+import { prepareDev } from "./dev.js"
+import { instanceError, OpenCodeInstanceError } from "./error.js"
 import { ensureMediaDirectory } from "./media.js"
 import { prepareInstanceProject } from "./instance.js"
 import * as Process from "./process.js"
-import { isProcessAlive, isValidName } from "./registry.js"
+import { freePort, waitForWebSocket } from "./readiness.js"
+import { isValidName } from "./registry.js"
+import { stopService } from "./service.js"
 import type { RecordingPaths } from "../recording/finalize.js"
 import { stripGitEnvironment } from "../script/project.js"
 import * as ToolController from "../tool/controller.js"
@@ -27,13 +29,7 @@ import type {
 
 type Viewport = Frontend.ResizeParams
 
-export class OpenCodeInstanceError extends Schema.TaggedErrorClass<OpenCodeInstanceError>()(
-  "OpenCodeInstanceError",
-  {
-    operation: Schema.String,
-    message: Schema.String,
-  },
-) {}
+export { OpenCodeInstanceError } from "./error.js"
 
 export interface Options {
   readonly artifacts: string
@@ -574,182 +570,6 @@ export const make = Effect.fn("OpenCodeInstance.make")(function* (
   } satisfies Instance
 })
 
-const freePort = Effect.tryPromise({
-  try: async () => {
-    const server = Bun.serve({
-      hostname: "127.0.0.1",
-      port: 0,
-      fetch: () => new Response(),
-    })
-    const port = server.port
-    await server.stop(true)
-    return port
-  },
-  catch: (cause) => instanceError("allocate port", cause),
-})
-
-const prepareDev = Effect.fn("OpenCodeInstance.prepareDev")(function* (
-  artifacts: string,
-  directory: string,
-) {
-  const root = resolve(directory)
-  const entrypoint = join(root, "packages", "cli", "src", "index.ts")
-  const solidPackage = join(
-    root,
-    "packages",
-    "tui",
-    "node_modules",
-    "@opentui",
-    "solid",
-    "package.json",
-  )
-  yield* Effect.tryPromise({
-    try: async () => {
-      if (!(await Bun.file(entrypoint).exists()))
-        throw new Error(`OpenCode development entrypoint not found: ${entrypoint}`)
-      if (!(await Bun.file(solidPackage).exists()))
-        throw new Error(
-          `OpenCode development dependency not found: ${solidPackage}; run bun install in ${root}`,
-        )
-      const value: unknown = await Bun.file(solidPackage).json()
-      if (!isPackageInfo(value))
-        throw new Error(`Invalid @opentui/solid package metadata: ${solidPackage}`)
-      const manifestPath = join(artifacts, "package.json")
-      const manifest: unknown = await Bun.file(manifestPath)
-        .json()
-        .catch(() => ({}))
-      const existing = isDependencyManifest(manifest) ? manifest : {}
-      await Bun.write(
-        manifestPath,
-        `${JSON.stringify(
-          {
-            ...existing,
-            private: true,
-            dependencies: {
-              ...existing.dependencies,
-              "@opentui/solid": value.version,
-            },
-          },
-          undefined,
-          2,
-        )}\n`,
-      )
-      return value
-    },
-    catch: (cause) => instanceError("prepare development checkout", cause),
-  })
-  const installed = yield* Process.run([process.execPath, "install"], {
-    cwd: artifacts,
-    stdout: "ignore",
-    stderr: "ignore",
-  }).pipe(Effect.mapError((cause) => instanceError("install development dependencies", cause)))
-  if (installed.status !== 0)
-    return yield* Effect.fail(
-      instanceError("install development dependencies", `bun install failed with status ${installed.status}`),
-    )
-  return [
-    process.execPath,
-    "--conditions=browser",
-    "--preload=@opentui/solid/preload",
-    entrypoint,
-  ]
-})
-
-const stopService = Effect.fn("OpenCodeInstance.stopService")(function* (
-  state: string,
-) {
-  const files = [
-    join(state, "opencode", "server.json"),
-    join(state, "opencode", "service-local.json"),
-    join(state, "opencode", "service.json"),
-  ]
-  const info = yield* Effect.tryPromise({
-    try: () =>
-      Promise.all(
-        files.map((file) =>
-          Bun.file(file)
-            .json()
-            .catch(() => undefined),
-        ),
-      ),
-    catch: (cause) => instanceError("read service state", cause),
-  })
-  yield* Effect.forEach(info, (value) => {
-    if (!isServiceInfo(value)) return Effect.void
-    return Effect.gen(function* () {
-      yield* Effect.sync(() => {
-        try {
-          process.kill(value.pid, "SIGTERM")
-        } catch {
-          return
-        }
-      })
-      yield* Effect.suspend(() =>
-        isProcessAlive(value.pid) ? Effect.fail(undefined) : Effect.void,
-      ).pipe(
-        Effect.retry(
-          Schedule.spaced(25).pipe(
-            Schedule.upTo({ times: 39 }),
-          ),
-        ),
-        Effect.catch(() => Effect.void),
-      )
-      if (isProcessAlive(value.pid))
-        yield* Effect.sync(() => process.kill(value.pid, "SIGKILL"))
-    })
-  }, { concurrency: "unbounded", discard: true })
-})
-
-const waitForWebSocket = Effect.fn("OpenCodeInstance.waitForWebSocket")(
-  (url: string, process: Process.Running, timeout: number) =>
-    Effect.raceFirst(
-      open(url).pipe(Effect.retry(Schedule.spaced(50))),
-      process.exitCode.pipe(
-        Effect.flatMap((status) =>
-          Effect.fail(
-            instanceError(
-              "wait for endpoint",
-              `OpenCode exited with status ${status} before ${url} became ready`,
-            ),
-          ),
-        ),
-      ),
-    ).pipe(
-      Effect.timeoutOrElse({
-        duration: timeout,
-        orElse: () =>
-          Effect.fail(
-            instanceError("wait for endpoint", `timed out waiting for drive endpoint ${url}`),
-          ),
-      }),
-    ),
-)
-
-const open = (url: string) =>
-  Effect.callback<void, OpenCodeInstanceError>((resume) => {
-    const socket = new WebSocket(url)
-    const onOpen = () => {
-      cleanup()
-      socket.terminate()
-      resume(Effect.void)
-    }
-    const onError = () => {
-      cleanup()
-      socket.terminate()
-      resume(Effect.fail(instanceError("connect", `cannot connect to ${url}`)))
-    }
-    const cleanup = () => {
-      socket.removeEventListener("open", onOpen)
-      socket.removeEventListener("error", onError)
-    }
-    socket.addEventListener("open", onOpen)
-    socket.addEventListener("error", onError)
-    return Effect.sync(() => {
-      cleanup()
-      socket.terminate()
-    })
-  })
-
 function processDriveName(instance: string, role: string) {
   const suffix = crypto.randomUUID().slice(0, 8)
   return `${instance.slice(0, 36)}-${role.slice(0, 17)}-${suffix}`
@@ -761,40 +581,6 @@ function recordingPaths(directory: string): RecordingPaths {
     timeline: join(directory, `recording-${id}.jsonl`),
     video: join(directory, `recording-${id}.mp4`),
   }
-}
-
-function instanceError(operation: string, cause: unknown) {
-  if (cause instanceof OpenCodeInstanceError) return cause
-  return new OpenCodeInstanceError({
-    operation,
-    message: cause instanceof Error ? cause.message : String(cause),
-  })
-}
-
-function isServiceInfo(value: unknown): value is { readonly pid: number } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "pid" in value &&
-    typeof value.pid === "number"
-  )
-}
-
-function isPackageInfo(value: unknown): value is { readonly version: string } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "version" in value &&
-    typeof value.version === "string"
-  )
-}
-
-function isDependencyManifest(
-  value: unknown,
-): value is { readonly dependencies?: Readonly<Record<string, string>> } {
-  if (typeof value !== "object" || value === null) return false
-  if (!("dependencies" in value) || value.dependencies === undefined) return true
-  return typeof value.dependencies === "object" && value.dependencies !== null
 }
 
 export * as OpenCodeInstance from "./runtime.js"
