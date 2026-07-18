@@ -1,3 +1,14 @@
+import {
+  CellHeight,
+  CellWidth,
+  DimAlpha,
+  FontSize,
+  StrikethroughOffset,
+  TextStyle,
+  UnderlineOffset,
+  baselineOffset,
+  drawBlockGlyph,
+} from "opencode-drive/frame"
 import { useEffect, useRef } from "react"
 import type { Frame, FrameArtifact } from "../../catalog/schema"
 
@@ -7,23 +18,12 @@ interface TerminalFrameProps {
   readonly lazy?: boolean
 }
 
-const CellWidth = 10
-const CellHeight = 20
-const FontSize = 16
 const FontFamily = "Commit Mono"
 const SymbolFontFamily = "Noto Sans Symbols"
 const SymbolFontFamily2 = "Noto Sans Symbols 2"
 const MathFontFamily = "Noto Sans Math"
 const FontStack = `"${FontFamily}", "${SymbolFontFamily}", "${SymbolFontFamily2}", "${MathFontFamily}"`
-const Bold = 1
-const Dim = 2
-const Italic = 4
-const Underline = 8
-const Inverse = 32
-const Hidden = 64
-const Strikethrough = 128
 const cache = new Map<string, Promise<FrameArtifact>>()
-const baselineCache = new Map<string, number>()
 let fontsReady: Promise<unknown> | undefined
 
 export function preloadFrame(frame: Frame) {
@@ -101,8 +101,8 @@ function drawFrame(canvas: HTMLCanvasElement, frame: FrameArtifact) {
     let column = 0
     line.spans.forEach((span) => {
       const attributes = span.attributes & 0xff
-      const inverse = Boolean(attributes & Inverse)
-      const hidden = Boolean(attributes & Hidden)
+      const inverse = Boolean(attributes & TextStyle.inverse)
+      const hidden = Boolean(attributes & TextStyle.invisible)
       const foreground = inverse ? span.bg : span.fg
       const background = inverse ? span.fg : span.bg
       const chars = [...span.text]
@@ -117,9 +117,9 @@ function drawFrame(canvas: HTMLCanvasElement, frame: FrameArtifact) {
           context.fillRect(x, y, cells * CellWidth, CellHeight)
         }
         if (!hidden && char.codePointAt(0) !== 0x0a00) {
-          context.fillStyle = color(foreground, attributes & Dim ? 0.55 : 1)
-          if (!drawBlockElement(context, char, x, y, cells)) {
-            const font = `${attributes & Italic ? "italic " : ""}${attributes & Bold ? "700 " : "400 "}${FontSize}px ${FontStack}`
+          context.fillStyle = color(foreground, attributes & TextStyle.dim ? DimAlpha : 1)
+          if (!drawBlockGlyph(context, char, x, y, cells)) {
+            const font = `${attributes & TextStyle.italic ? "italic " : ""}${attributes & TextStyle.bold ? "700 " : "400 "}${FontSize}px ${FontStack}`
             context.font = font
             context.fillText(
               char,
@@ -128,8 +128,8 @@ function drawFrame(canvas: HTMLCanvasElement, frame: FrameArtifact) {
               cells * CellWidth,
             )
           }
-          if (attributes & Underline) context.fillRect(x, y + 17, cells * CellWidth, 1)
-          if (attributes & Strikethrough) context.fillRect(x, y + 10, cells * CellWidth, 1)
+          if (attributes & TextStyle.underline) context.fillRect(x, y + UnderlineOffset, cells * CellWidth, 1)
+          if (attributes & TextStyle.strikethrough) context.fillRect(x, y + StrikethroughOffset, cells * CellWidth, 1)
         }
         column += cells
         remaining -= cells
@@ -143,28 +143,6 @@ function drawFrame(canvas: HTMLCanvasElement, frame: FrameArtifact) {
       }
     })
   })
-}
-
-function drawBlockElement(context: CanvasRenderingContext2D, char: string, x: number, y: number, cells: number) {
-  const width = cells * CellWidth
-  if (char === "█") context.fillRect(x, y, width, CellHeight)
-  else if (char === "▀") context.fillRect(x, y, width, CellHeight / 2)
-  else if (char === "▄") context.fillRect(x, y + CellHeight / 2, width, CellHeight / 2)
-  else if (char === "┃") context.fillRect(x + CellWidth / 2 - 1, y, 2, CellHeight)
-  else if (char === "╹") context.fillRect(x + CellWidth / 2 - 1, y, 2, CellHeight / 2)
-  else return false
-  return true
-}
-
-function baselineOffset(context: CanvasRenderingContext2D, font: string) {
-  const cached = baselineCache.get(font)
-  if (cached !== undefined) return cached
-  const metrics = context.measureText("Mg")
-  const ascent = metrics.fontBoundingBoxAscent || FontSize * 0.8
-  const descent = metrics.fontBoundingBoxDescent || FontSize * 0.2
-  const offset = (CellHeight - (ascent + descent)) / 2 + ascent
-  baselineCache.set(font, offset)
-  return offset
 }
 
 function color([red, green, blue, alpha]: FrameArtifact["lines"][number]["spans"][number]["fg"], opacity = 1) {

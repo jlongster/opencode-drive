@@ -66,7 +66,7 @@ Protocol changes originate in OpenCode, then are copied directly into Drive. Do 
 
 PNG is not authoritative. Do not reintroduce routine checked-in PNG capture.
 
-The browser renderer must preserve the canonical 10 by 20 pixel cell geometry and use the bundled Commit Mono and Noto symbol/math fallback stack. Ordinary Unicode symbols belong in fallback fonts, not hand-drawn code. Render only terminal cell primitives such as solid blocks and structural bars geometrically, and keep those primitives synchronized with the Drive PNG renderer.
+The browser renderer must preserve the canonical 10 by 20 pixel cell geometry and use the bundled Commit Mono and Noto symbol/math fallback stack. Ordinary Unicode symbols belong in fallback fonts, not hand-drawn code. Render only terminal cell primitives such as solid blocks and structural bars geometrically. Cell geometry, attribute bits, and the block/bar glyph table are shared with the Drive PNG renderer through `opencode-drive/frame`; extend that module instead of hand-syncing constants.
 
 The frame format is renderer-neutral. An SVG exporter should consume the same frame artifacts rather than changing capture.
 
@@ -141,4 +141,4 @@ For protocol changes, also run the OpenCode simulation tests and the full OpenCo
 
 ## Dependencies
 
-The catalog consumes OpenCode Drive as a Bun workspace dependency (`"opencode-drive": "workspace:*"`) and imports only its published entry points (`opencode-drive`, `opencode-drive/driver`). Never import package-internal `src/` paths.
+The catalog consumes OpenCode Drive as a Bun workspace dependency (`"opencode-drive": "workspace:*"`) and imports only its published entry points (`opencode-drive`, `opencode-drive/driver`, `opencode-drive/client` for protocol schemas, and the browser-safe `opencode-drive/frame` for renderer geometry). Never import package-internal `src/` paths.

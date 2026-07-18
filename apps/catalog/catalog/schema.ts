@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { Frontend } from "opencode-drive/client"
 import { Patterns, ScreenCategories, States, Surfaces } from "./dsl"
 
 const Slug = Schema.NonEmptyString.check(Schema.isPattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/))
@@ -85,26 +86,11 @@ export const Flow = Schema.Struct({
 
 export interface Flow extends Schema.Schema.Type<typeof Flow> {}
 
-const Color = Schema.Tuple([Schema.Number, Schema.Number, Schema.Number, Schema.Number])
-
 export const FrameArtifact = Schema.Struct({
   format: Schema.Literal("opencode-terminal-frame-v1"),
+  ...Frontend.CapturedFrame.fields,
   cols: PositiveInt,
   rows: PositiveInt,
-  cursor: Schema.Tuple([Schema.Number, Schema.Number]),
-  lines: Schema.Array(
-    Schema.Struct({
-      spans: Schema.Array(
-        Schema.Struct({
-          text: Schema.String,
-          fg: Color,
-          bg: Color,
-          attributes: Schema.Number,
-          width: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-        }),
-      ),
-    }),
-  ),
 })
 
 export interface FrameArtifact extends Schema.Schema.Type<typeof FrameArtifact> {}

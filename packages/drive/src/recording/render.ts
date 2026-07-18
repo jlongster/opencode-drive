@@ -1,10 +1,20 @@
 import { fileURLToPath } from "node:url"
-import { GlobalFonts, createCanvas, loadImage, type SKRSContext2D } from "@napi-rs/canvas"
-import { TextStyle, type CapturedFrame } from "./types.js"
+import { GlobalFonts, createCanvas, loadImage } from "@napi-rs/canvas"
+import {
+  CellHeight,
+  CellWidth,
+  DimAlpha,
+  FontSize,
+  StrikethroughOffset,
+  TextStyle,
+  UnderlineOffset,
+  baselineOffset,
+  drawBlockGlyph,
+} from "../frame/index.js"
+import type { CapturedFrame } from "./types.js"
 
-export const CellWidth = 10
-export const CellHeight = 20
-const FontSize = 16
+export { CellHeight, CellWidth } from "../frame/index.js"
+
 const FontFamily = "OpenCode Mono"
 const SymbolFontFamily = "OpenCode Symbols"
 const SymbolFontFamily2 = "OpenCode Symbols 2"
@@ -42,35 +52,6 @@ for (const [file, family] of [
 
 function color(rgb: number, alpha = 1) {
   return `rgba(${(rgb >> 16) & 255}, ${(rgb >> 8) & 255}, ${rgb & 255}, ${alpha})`
-}
-
-const baselineCache = new Map<string, number>()
-
-type Measurable = {
-  measureText(text: string): {
-    readonly fontBoundingBoxAscent?: number
-    readonly fontBoundingBoxDescent?: number
-  }
-}
-
-function baselineOffset(context: Measurable, font: string) {
-  const cached = baselineCache.get(font)
-  if (cached !== undefined) return cached
-  const metrics = context.measureText("Mg")
-  const ascent = metrics.fontBoundingBoxAscent ?? FontSize * 0.8
-  const descent = metrics.fontBoundingBoxDescent ?? FontSize * 0.2
-  // Center the font's bounding box in the cell and return its alphabetic baseline.
-  const offset = (CellHeight - (ascent + descent)) / 2 + ascent
-  baselineCache.set(font, offset)
-  return offset
-}
-
-function drawFixedGlyph(context: SKRSContext2D, char: string, x: number, y: number) {
-  if (char === "█") context.fillRect(x, y, CellWidth, CellHeight)
-  else if (char === "▀") context.fillRect(x, y, CellWidth, CellHeight / 2)
-  else if (char === "▄") context.fillRect(x, y + CellHeight / 2, CellWidth, CellHeight / 2)
-  else return false
-  return true
 }
 
 export interface RenderFrameOptions {
@@ -117,13 +98,13 @@ export function renderFrame(frame: CapturedFrame, options: RenderFrameOptions = 
       const weight = span.attributes & TextStyle.bold ? "700 " : "400 "
       const font = `${italic}${weight}${FontSize}px ${FontStack}`
       context.font = font
-      context.fillStyle = color(foreground, span.attributes & TextStyle.dim ? 0.55 : 1)
+      context.fillStyle = color(foreground, span.attributes & TextStyle.dim ? DimAlpha : 1)
       const baseline = baselineOffset(context, font)
       let remaining = span.width
       for (const char of span.text) {
         const cells = Math.min(Math.max(1, Bun.stringWidth(char)), remaining)
         const x = column * CellWidth
-        if (!drawFixedGlyph(context, char, x, y))
+        if (!drawBlockGlyph(context, char, x, y, cells))
           context.fillText(
             char,
             x + (cells * CellWidth) / 2,
@@ -131,10 +112,10 @@ export function renderFrame(frame: CapturedFrame, options: RenderFrameOptions = 
             cells * CellWidth,
           )
         if (span.attributes & TextStyle.underline) {
-          context.fillRect(x, y + 17, cells * CellWidth, 1)
+          context.fillRect(x, y + UnderlineOffset, cells * CellWidth, 1)
         }
         if (span.attributes & TextStyle.strikethrough) {
-          context.fillRect(x, y + 10, cells * CellWidth, 1)
+          context.fillRect(x, y + StrikethroughOffset, cells * CellWidth, 1)
         }
         column += cells
         remaining -= cells

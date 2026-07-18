@@ -1,13 +1,4 @@
-export const TextStyle = {
-  bold: 1,
-  dim: 2,
-  italic: 4,
-  underline: 8,
-  blink: 16,
-  inverse: 32,
-  invisible: 64,
-  strikethrough: 128,
-} as const
+export { TextStyle } from "../frame/index.js"
 
 export interface CapturedSpan {
   text: string
