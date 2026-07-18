@@ -32,7 +32,14 @@ type Model =
       readonly sessionID: SessionID
       readonly prompt: string
       readonly output?: string
+      readonly reasoning?: string
       readonly queuedPrompt?: string
+      readonly tool?: {
+        readonly callID: string
+        readonly question: string
+        readonly phase: "input" | "running"
+        readonly startedAfter: number
+      }
     }
 
 type SessionID = Effect.Success<
@@ -169,6 +176,42 @@ export default defineScript({
         }
       })
 
+      const assertAssistantContent = Effect.fn("LifecycleProperties.assertAssistantContent")(function* (
+        state: Extract<Model, { phase: "streaming" }>,
+      ) {
+        if (
+          state.output === undefined &&
+          state.reasoning === undefined &&
+          state.tool === undefined
+        ) return
+        const messages = yield* opencode.message.list({
+          sessionID: state.sessionID,
+          limit: 20,
+          order: "desc",
+        })
+        const assistant = messages.data.find((message) => message.type === "assistant")
+        if (
+          assistant?.type === "assistant" &&
+          (state.output === undefined ||
+            assistant.content.some(
+              (part) => part.type === "text" && part.text === state.output,
+            )) &&
+          (state.reasoning === undefined ||
+            assistant.content.some(
+              (part) => part.type === "reasoning" && part.text === state.reasoning,
+            )) &&
+          (state.tool === undefined ||
+            assistant.content.some(
+              (part) =>
+                part.type === "tool" &&
+                part.id === state.tool?.callID &&
+                part.state.status === "error" &&
+                part.state.error.type === "aborted",
+            ))
+        ) return
+        return yield* Effect.fail(new Error("server projection lost settled assistant content"))
+      })
+
       const idleAfter = (
         state: Extract<Model, { phase: "streaming" }>,
       ): Model => ({
@@ -277,7 +320,10 @@ export default defineScript({
           },
           {
             name: "emit-text",
-            enabled: (state) => state.phase === "streaming" && state.output === undefined,
+            enabled: (state) =>
+              state.phase === "streaming" &&
+              state.output === undefined &&
+              state.tool === undefined,
             run: (state, step) =>
               Effect.gen(function* () {
                 if (state.phase !== "streaming") return state
@@ -289,8 +335,93 @@ export default defineScript({
               }),
           },
           {
+            name: "emit-reasoning",
+            enabled: (state) =>
+              state.phase === "streaming" &&
+              state.reasoning === undefined &&
+              state.tool === undefined,
+            run: (state, step) =>
+              Effect.gen(function* () {
+                if (state.phase !== "streaming") return state
+                const reasoning = `lifecycle-reasoning-${step}`
+                const after = eventSequence - 1
+                yield* sendOutput(Llm.reasoning(reasoning, { delay: 0, chunkSize: 100 }))
+                yield* waitForEvent("session.reasoning.started", state.sessionID, after)
+                return { ...state, reasoning }
+              }),
+          },
+          {
+            name: "start-tool-input",
+            enabled: (state) => state.phase === "streaming" && state.tool === undefined,
+            run: (state, step) =>
+              Effect.gen(function* () {
+                if (state.phase !== "streaming") return state
+                const callID = `call_lifecycle_${step}`
+                const question = `lifecycle-tool-question-${step}`
+                const after = eventSequence - 1
+                yield* sendOutput(
+                  Llm.toolCall(
+                    {
+                      index: 0,
+                      id: callID,
+                      name: "question",
+                      input: {
+                        questions: [
+                          {
+                            question,
+                            header: "Lifecycle",
+                            options: [
+                              {
+                                label: "Continue",
+                                description: "Continue the lifecycle simulation.",
+                              },
+                            ],
+                            multiple: false,
+                          },
+                        ],
+                      },
+                    },
+                    { delay: 20, chunkSize: 100 },
+                  ),
+                )
+                const started = yield* waitForEvent(
+                  "session.tool.input.started",
+                  state.sessionID,
+                  after,
+                )
+                return {
+                  ...state,
+                  tool: {
+                    callID,
+                    question,
+                    phase: "input" as const,
+                    startedAfter: started.index,
+                  },
+                }
+              }),
+          },
+          {
+            name: "await-tool-execution",
+            enabled: (state) => state.phase === "streaming" && state.tool?.phase === "input",
+            run: (state) =>
+              Effect.gen(function* () {
+                if (state.phase !== "streaming" || state.tool?.phase !== "input") return state
+                yield* endResponse(Llm.finish("tool-calls"))
+                yield* waitForEvent(
+                  "session.tool.called",
+                  state.sessionID,
+                  state.tool.startedAfter,
+                )
+                yield* ui.waitFor(state.tool.question, { timeout: 10_000 })
+                return { ...state, tool: { ...state.tool, phase: "running" as const } }
+              }),
+          },
+          {
             name: "queue-prompt",
-            enabled: (state) => state.phase === "streaming" && state.queuedPrompt === undefined,
+            enabled: (state) =>
+              state.phase === "streaming" &&
+              state.queuedPrompt === undefined &&
+              state.tool === undefined,
             run: (state, step) =>
               Effect.gen(function* () {
                 if (state.phase !== "streaming") return state
@@ -303,7 +434,10 @@ export default defineScript({
           },
           {
             name: "finish",
-            enabled: (state) => state.phase === "streaming" && state.output !== undefined,
+            enabled: (state) =>
+              state.phase === "streaming" &&
+              state.tool === undefined &&
+              (state.output !== undefined || state.reasoning !== undefined),
             run: (state) =>
               Effect.gen(function* () {
                 if (state.phase !== "streaming") return state
@@ -311,6 +445,7 @@ export default defineScript({
                 yield* endResponse(Llm.finish())
                 if (state.queuedPrompt !== undefined) {
                   yield* waitForEvent("session.input.promoted", state.sessionID, after)
+                  yield* assertAssistantContent(state)
                   const owners = yield* promptOwners(state.sessionID, state.queuedPrompt)
                   if (owners.projected !== 1 || owners.pending !== 0)
                     return yield* Effect.fail(
@@ -326,6 +461,7 @@ export default defineScript({
                   }
                 }
                 yield* waitForEvent("session.execution.succeeded", state.sessionID, after)
+                yield* assertAssistantContent(state)
                 return idleAfter(state)
               }),
           },
@@ -338,19 +474,24 @@ export default defineScript({
                 const after = eventSequence - 1
                 yield* opencode.session.interrupt({ sessionID: state.sessionID })
                 yield* waitForEvent("session.execution.interrupted", state.sessionID, after)
-                yield* endResponse(Llm.text("discarded-after-interrupt", { delay: 0, chunkSize: 100 }))
+                if (state.tool?.phase !== "running")
+                  yield* endResponse(
+                    Llm.text("discarded-after-interrupt", { delay: 0, chunkSize: 100 }),
+                  )
+                yield* assertAssistantContent(state)
                 return yield* afterInterrupted(state)
               }),
           },
           {
             name: "provider-disconnect",
-            enabled: (state) => state.phase === "streaming",
+            enabled: (state) => state.phase === "streaming" && state.tool === undefined,
             run: (state) =>
               Effect.gen(function* () {
                 if (state.phase !== "streaming") return state
                 const after = eventSequence - 1
                 yield* endResponse(Llm.disconnect())
                 const failed = yield* waitForEvent("session.execution.failed", state.sessionID, after)
+                yield* assertAssistantContent(state)
                 return yield* afterProviderFailure(state, failed.index)
               }),
           },
@@ -373,6 +514,20 @@ export default defineScript({
               state.phase === "streaming" || state.output === undefined
                 ? Effect.void
                 : ui.waitFor(state.output, { timeout: 10_000 }).pipe(Effect.asVoid),
+          },
+          {
+            name: "active output remains visible",
+            check: (state) =>
+              state.phase !== "streaming" || state.output === undefined
+                ? Effect.void
+                : ui.waitFor(state.output, { timeout: 10_000 }).pipe(Effect.asVoid),
+          },
+          {
+            name: "running tool remains visible",
+            check: (state) =>
+              state.phase === "streaming" && state.tool?.phase === "running"
+                ? ui.waitFor(state.tool.question, { timeout: 10_000 }).pipe(Effect.asVoid)
+                : Effect.void,
           },
           {
             name: "settled composer is actionable",
@@ -454,14 +609,24 @@ export default defineScript({
 
       if (final.phase === "streaming") {
         const after = eventSequence - 1
-        yield* endResponse(Llm.finish())
-        if (final.queuedPrompt !== undefined) {
-          const promoted = yield* waitForEvent("session.input.promoted", final.sessionID, after)
-          yield* waitForResponse()
-          yield* endResponse(Llm.finish())
-          yield* waitForEvent("session.execution.succeeded", final.sessionID, promoted.index)
+        if (final.tool !== undefined) {
+          yield* opencode.session.interrupt({ sessionID: final.sessionID })
+          yield* waitForEvent("session.execution.interrupted", final.sessionID, after)
+          if (final.tool.phase === "input")
+            yield* endResponse(
+              Llm.text("discarded-after-interrupt", { delay: 0, chunkSize: 100 }),
+            )
+          yield* assertAssistantContent(final)
         } else {
-          yield* waitForEvent("session.execution.succeeded", final.sessionID, after)
+          yield* endResponse(Llm.finish())
+          if (final.queuedPrompt !== undefined) {
+            const promoted = yield* waitForEvent("session.input.promoted", final.sessionID, after)
+            yield* waitForResponse()
+            yield* endResponse(Llm.finish())
+            yield* waitForEvent("session.execution.succeeded", final.sessionID, promoted.index)
+          } else {
+            yield* waitForEvent("session.execution.succeeded", final.sessionID, after)
+          }
         }
       }
     })),

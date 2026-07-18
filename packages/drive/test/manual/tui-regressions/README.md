@@ -69,7 +69,7 @@ The desired invariant is that the TUI remains alive and returns to an actionable
 
 ## Seeded lifecycle simulation
 
-`lifecycle-properties.ts` uses the live OpenCode event stream and a queue-backed simulated response to select deterministic mid-flight actions. Submit, queued submit, text emission, completion, interruption, and provider disconnect are separate model transitions. A failure preserves its seed, action trace, model state, recent session events, and terminal frame in `state-machine-failure.json`:
+`lifecycle-properties.ts` uses the live OpenCode event stream and a queue-backed simulated response to select deterministic mid-flight actions. Submit, queued submit, text emission, reasoning emission, tool-input streaming, tool execution, completion, interruption, and provider disconnect are separate model transitions. A failure preserves its seed, action trace, model state, recent session events, and terminal frame in `state-machine-failure.json`:
 
 ```sh
 OPENCODE_DRIVE_SEED=42 OPENCODE_DRIVE_STEPS=20 \
@@ -78,6 +78,6 @@ OPENCODE_DRIVE_SEED=42 OPENCODE_DRIVE_STEPS=20 \
   --dev "$OPENCODE_DEV"
 ```
 
-Re-run a failure with the same seed and step count. Transition preconditions constrain actions to valid idle, pending, and streaming states. A queued prompt must have exactly one owner across pending input and projected history. Completion can promote it into the next model step, interruption can leave it awaiting resume, and provider failure can promote it into a replacement execution. Shared invariants also require the latest prompt and settled output to remain visible, the server projection to retain the active prompt, the composer to become actionable after terminal execution, and internal transport defects to stay out of the UI.
+Re-run a failure with the same seed and step count. Transition preconditions constrain actions to valid idle, pending, streaming, tool-input, and running-tool states. Tool input is chunked so interruption can occur before parsing completes; advancing the tool response dispatches a blocking question tool so interruption can also occur during execution. Interrupted tool parts must settle with an aborted error in the server projection. A queued prompt must have exactly one owner across pending input and projected history. Completion can promote it into the next model step, interruption can leave it awaiting resume, and provider failure can promote it into a replacement execution. Shared invariants also require the latest prompt and settled output to remain visible, the server projection to retain the active prompt, the composer to become actionable after terminal execution, and internal transport defects to stay out of the UI.
 
 Interruption uses the existing `llm.pending` simulation capability. If OpenCode rejects a response write after terminating the invocation, Drive confirms that the invocation is no longer pending and settles the response as externally terminated. If the invocation remains pending or the query fails, Drive preserves the original write failure.
