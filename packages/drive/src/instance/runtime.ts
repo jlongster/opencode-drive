@@ -142,7 +142,10 @@ export const make = Effect.fn("OpenCodeInstance.make")(function* (
     OPENCODE_DRIVE_RENDERER: options.visible ? "visible" : "headless",
     OPENCODE_DRIVE_MEDIA_DIR: media,
     OPENCODE_CONFIG_DIR: join(files, ".opencode"),
-    OPENCODE_DB: ":memory:",
+    // Default to an ephemeral database; OPENCODE_DRIVE_DB opts a run into a
+    // file-backed database (relative paths land in the run's data dir) so
+    // restart scenarios can exercise durable session recovery.
+    OPENCODE_DB: process.env.OPENCODE_DRIVE_DB ?? ":memory:",
     OPENCODE_LOG_LEVEL: !options.visible ? "DEBUG" : process.env.OPENCODE_LOG_LEVEL,
     OPENCODE_TEST_HOME: artifacts,
     XDG_CACHE_HOME: join(artifacts, "home", ".cache"),
