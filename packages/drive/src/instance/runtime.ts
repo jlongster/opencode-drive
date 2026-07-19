@@ -46,7 +46,7 @@ export interface Options {
   readonly config?: OpenCodeConfig
   readonly tui?: OpenCodeTuiConfig
   readonly setup?: Setup
-  readonly tools?: Tool.Setup
+  readonly tools?: Tool.Configuration
   readonly log?: (message: string) => void
 }
 
@@ -65,6 +65,7 @@ export interface Instance {
     readonly ui: string
     readonly backend: string
   }
+  readonly tools: Tool.Controls
   readonly recording: Effect.Effect<RecordingPaths | undefined>
   readonly primary: Effect.Effect<Process.Running, OpenCodeInstanceError>
   readonly launchServer: Effect.Effect<
@@ -104,6 +105,7 @@ const State = Data.taggedEnum<State>()
 
 export const make = Effect.fn("OpenCodeInstance.make")(function* (
   options: Options,
+  configuredTools?: ToolController.Controller,
 ) {
   const artifacts = resolve(options.artifacts)
   const logs = join(artifacts, "logs")
@@ -117,11 +119,13 @@ export const make = Effect.fn("OpenCodeInstance.make")(function* (
     ui: `ws://127.0.0.1:${yield* freePort}`,
     backend: `ws://127.0.0.1:${yield* freePort}`,
   }
-  const toolController = yield* ToolController.make(options.tools)
+  const toolController = configuredTools ?? (yield* ToolController.make(options.tools))
   const database = yield* Config.string("OPENCODE_DRIVE_DB").pipe(
     Config.withDefault(":memory:"),
   )
-  const setup = ToolController.composeSetup(toolController, options.tools, options.setup)
+  const setup = configuredTools === undefined
+    ? ToolController.composeSetup(toolController, options.setup)
+    : options.setup
   if (
     options.project !== undefined ||
     options.config !== undefined ||
@@ -556,6 +560,7 @@ export const make = Effect.fn("OpenCodeInstance.make")(function* (
     logs,
     visible: options.visible ?? false,
     endpoints,
+    tools: toolController.controls,
     recording: Ref.get(state).pipe(Effect.map((current) => current.recording)),
     primary: Ref.get(state).pipe(
       Effect.flatMap((current) =>

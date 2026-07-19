@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect"
-import { OpenCodeDriver } from "../src/index.js"
+import { OpenCodeDriver, Tool } from "../src/index.js"
 import type {
   Frontend,
   Project,
@@ -24,6 +24,12 @@ export type ScriptTuiIsCanonical = Assert<
 export type ScriptTuisAreCanonical = Assert<
   Equal<ScriptContext["tuis"], Tuis>
 >
+export type ScriptToolsAreCanonical = Assert<
+  Equal<ScriptContext["tools"], Tool.Controls>
+>
+export type DriverToolsAreCanonical = Assert<
+  Equal<OpenCodeDriver.Driver["tools"], Tool.Controls>
+>
 export type LaunchedTuiIsCanonical = Assert<
   Equal<Effect.Success<ReturnType<Tuis["launch"]>>, Tui>
 >
@@ -44,4 +50,22 @@ export type DriverProjectIsCanonical = Assert<
 const zeroConfig = OpenCodeDriver.use(() => Effect.void)
 export type ZeroConfigUseIsRunnable = Assert<
   Equal<Effect.Services<typeof zeroConfig>, never>
+>
+
+const controlledOptions: OpenCodeDriver.Options = { tools: ["shell"] }
+declare const controls: Tool.Controls
+const shellCalls = controls.control("shell")
+declare const toolName: Tool.Name
+controls.control(toolName)
+export type ShellControlIsTyped = Assert<
+  Equal<
+    Effect.Success<typeof shellCalls>,
+    Tool.ControlledCalls<Tool.ShellInput, Tool.ShellResult>
+  >
+>
+const controlled = OpenCodeDriver.use(controlledOptions, ({ tools }) =>
+  tools.control("shell").pipe(Effect.asVoid),
+)
+export type ControlledUseIsRunnable = Assert<
+  Equal<Effect.Services<typeof controlled>, never>
 >

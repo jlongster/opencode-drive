@@ -2,6 +2,7 @@ import { join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import * as Deferred from "effect/Deferred"
 import * as Effect from "effect/Effect"
+import * as Schema from "effect/Schema"
 import * as OpenCodeDriver from "../driver/index.js"
 import type * as OpenCodeTui from "../driver/client.js"
 import * as OpenCodeUi from "../driver/ui.js"
@@ -9,6 +10,7 @@ import * as PreparedDriver from "../driver/prepared.js"
 import type * as OpenCodeInstance from "../instance/runtime.js"
 import { createScriptFileSystem } from "../script/filesystem.js"
 import { hasGitMetadata } from "../script/project.js"
+import { Names as ToolNames } from "../tool/types.js"
 import type {
   AutomaticScriptDefinition,
   ScriptDefinition,
@@ -128,6 +130,7 @@ export const runScript = Effect.fn("DriveCli.runScript")(function* (
       kill: prepared.server.kill,
     },
     llm: prepared.llm,
+    tools: instance.tools,
     artifacts: instance.artifacts,
   }
   const primaryTui = prepared.primary
@@ -184,10 +187,14 @@ function isScriptDefinition(value: unknown): value is ScriptDefinition {
     (value.config === undefined || isJsonObject(value.config)) &&
     (value.tuiConfig === undefined || isJsonObject(value.tuiConfig)) &&
     (value.setup === undefined || typeof value.setup === "function") &&
-    (value.tools === undefined || typeof value.tools === "function") &&
+    (value.tools === undefined || isToolConfiguration(value.tools)) &&
     (value.tui === undefined || isTuiOptions(value.tui)) &&
     (!("launch" in value) || value.launch === "manual")
   )
+}
+
+function isToolConfiguration(value: unknown) {
+  return typeof value === "function" || Schema.is(ToolNames)(value)
 }
 
 function isTuiOptions(value: unknown) {

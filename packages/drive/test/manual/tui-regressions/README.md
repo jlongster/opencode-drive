@@ -85,7 +85,8 @@ Interruption uses the existing `llm.pending` simulation capability. If OpenCode 
 ## Multi-tool interleavings
 
 `multi-tool-interleavings.ts` launches shell, question, read, and glob calls in
-one assistant step. It holds the shell open while three permissions coexist,
+one assistant step. Drive controls the declared shell by call ID from `run`,
+holding it open while three permissions coexist,
 approves the question so its form is hidden behind the remaining read and glob
 permissions, and lets glob complete while read permission stays visible. It
 then rejects read, answers the form, and releases shell last. Permission

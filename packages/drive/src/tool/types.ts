@@ -65,7 +65,29 @@ export class Failure extends Schema.TaggedErrorClass<Failure>()(
   { message: Schema.String },
 ) {}
 
+export const Name = Schema.Literals(["shell", "webfetch", "websearch"])
+export type Name = typeof Name.Type
+export const Names = Schema.Array(Name)
+
+export class ControlError extends Schema.TaggedErrorClass<ControlError>()(
+  "OpenCodeDrive.ToolControlError",
+  {
+    operation: Schema.Literals(["control", "take", "progress", "succeed", "fail"]),
+    reason: Schema.Literals([
+      "not-controlled",
+      "controller-closed",
+      "already-claimed",
+      "already-settled",
+      "transport-interrupted",
+    ]),
+    name: Name,
+    callID: Schema.optional(Schema.String),
+    message: Schema.String,
+  },
+) {}
+
 export interface Context<Input, Result> {
+  readonly id: string
   readonly input: Input
   /** Zero-based invocation index for this handler. */
   readonly index: number
@@ -80,15 +102,51 @@ export type ShellHandler = Handler<ShellInput, ShellResult>
 export type WebFetchHandler = Handler<WebFetchInput, WebFetchResult>
 export type WebSearchHandler = Handler<WebSearchInput, WebSearchResult>
 
-export type Registration =
-  | readonly [name: "shell", handler: ShellHandler]
-  | readonly [name: "webfetch", handler: WebFetchHandler]
-  | readonly [name: "websearch", handler: WebSearchHandler]
+export interface ToolTypes {
+  readonly shell: { readonly input: ShellInput; readonly result: ShellResult }
+  readonly webfetch: { readonly input: WebFetchInput; readonly result: WebFetchResult }
+  readonly websearch: { readonly input: WebSearchInput; readonly result: WebSearchResult }
+}
+
+export type HandlerFor<Tool extends Name> = Handler<
+  ToolTypes[Tool]["input"],
+  ToolTypes[Tool]["result"]
+>
+
+export type Registration = {
+  readonly [Tool in Name]: readonly [name: Tool, handler: HandlerFor<Tool>]
+}[Name]
 
 export interface Registry {
-  handle(name: "shell", handler: ShellHandler): void
-  handle(name: "webfetch", handler: WebFetchHandler): void
-  handle(name: "websearch", handler: WebSearchHandler): void
+  handle<Tool extends Name>(name: Tool, handler: HandlerFor<Tool>): void
 }
 
 export type Setup = (tools: Registry) => void
+
+export type Configuration = Setup | typeof Names.Type
+
+export interface ControlledCall<Input, Result> {
+  readonly id: string
+  readonly input: Input
+  readonly index: number
+  readonly progress: (output: string | Result) => Effect.Effect<void, ControlError>
+  readonly succeed: (result: Result) => Effect.Effect<void, ControlError>
+  /** Commits a failed remote tool result; this Effect fails only when control is no longer available. */
+  readonly fail: (message: string) => Effect.Effect<void, ControlError>
+  /** Completes only when interruption wins before `succeed` or `fail`. */
+  readonly awaitInterrupted: () => Effect.Effect<void>
+}
+
+export interface ControlledCalls<Input, Result> {
+  take(): Effect.Effect<ControlledCall<Input, Result>, ControlError>
+  take(id: string): Effect.Effect<ControlledCall<Input, Result>, ControlError>
+}
+
+export type ControlledCallsFor<Tool extends Name> = ControlledCalls<
+  ToolTypes[Tool]["input"],
+  ToolTypes[Tool]["result"]
+>
+
+export interface Controls {
+  control<Tool extends Name>(name: Tool): Effect.Effect<ControlledCallsFor<Tool>, ControlError>
+}

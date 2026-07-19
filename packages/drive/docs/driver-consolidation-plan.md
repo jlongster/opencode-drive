@@ -83,6 +83,11 @@ Expose the existing OpenCode SDK as `opencode` after introducing one service-reg
 
 Extend the canonical OpenCode simulation protocol to model delayed tool completion, structured success, failure, cancellation, concurrency, and partial input. Expose this only through programs, never through convenience CLI command flags.
 
+Drive's plugin-backed runtime controls now cover the supported `shell`,
+`webfetch`, and `websearch` adapters. This follow-up remains about canonical,
+provider-neutral simulation for arbitrary tools rather than expanding those
+Drive-owned adapters.
+
 ### Semantic UI Snapshot
 
 Add roles, labels, stable identity, selected/expanded/disabled state, and hierarchy to the canonical OpenCode frontend protocol. Drive should consume those semantics instead of deriving them from terminal text.

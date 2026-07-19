@@ -834,6 +834,35 @@ describe("opencode-drive", () => {
     expect((await Bun.file(join(artifacts, "launches.txt")).text()).trim().split("\n")).toHaveLength(2)
   }, 60_000)
 
+  test("controls a statically declared tool from the running script", async () => {
+    const root = await temporary()
+    const child = spawn(
+      [
+        "start",
+        "--name",
+        "tool-control-script-test",
+        "--script",
+        fixture("tool-control-script.ts"),
+        "--",
+        process.execPath,
+        fixture("fake-opencode.ts"),
+      ],
+      root,
+    )
+    const stderr = new Response(child.stderr).text()
+    expect(await child.exited).toBe(0)
+    const artifacts = artifactPath(await stderr)
+    roots.push(artifacts)
+    const events = (await Bun.file(join(artifacts, "tool-control-events.jsonl")).text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    expect(events).toEqual([
+      { type: "progress", result: { output: "script progress\n" } },
+      { type: "success", result: { output: "script success\n", exit: 0 } },
+    ])
+  }, 60_000)
+
   test("closes the automatic script's primary TUI", async () => {
     const root = await temporary()
     const child = spawn(

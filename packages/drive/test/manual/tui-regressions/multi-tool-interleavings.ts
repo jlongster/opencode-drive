@@ -1,4 +1,4 @@
-import { defineScript, Llm, Tool } from "../../../src/index.js"
+import { defineScript, Llm } from "../../../src/index.js"
 import { Deferred, Effect, Schedule, Stream } from "effect"
 
 const shellCallID = "call_multi_shell"
@@ -6,9 +6,6 @@ const questionCallID = "call_multi_question"
 const readCallID = "call_multi_read"
 const globCallID = "call_multi_glob"
 const question = "Which runtime should the multi-tool probe use?"
-
-let shellStarted: Deferred.Deferred<void> | undefined
-let releaseShell: Deferred.Deferred<void> | undefined
 
 export default defineScript({
   project: {
@@ -23,24 +20,10 @@ export default defineScript({
       { action: "shell", resource: "*", effect: "allow" },
     ],
   },
-  tools: (tools) => {
-    tools.handle("shell", ({ progress }) =>
-      Effect.gen(function* () {
-        const started = shellStarted
-        const release = releaseShell
-        if (started === undefined || release === undefined)
-          return yield* new Tool.Failure({ message: "shell controls were not initialized" })
-        yield* progress("multi-tool shell remains active\n")
-        yield* Deferred.succeed(started, undefined)
-        yield* Deferred.await(release)
-        return { output: "multi-tool shell completed\n", exit: 0 }
-      }),
-    )
-  },
-  run: ({ ui, llm, opencode, artifacts }) =>
+  tools: ["shell"],
+  run: ({ ui, llm, opencode, artifacts, tools }) =>
     Effect.scoped(Effect.gen(function* () {
-      shellStarted = yield* Deferred.make<void>()
-      releaseShell = yield* Deferred.make<void>()
+      const shells = yield* tools.control("shell")
       const executionInterrupted = yield* Deferred.make<void>()
       const toolSettlements: Array<string> = []
 
@@ -97,7 +80,8 @@ export default defineScript({
       yield* llm.queue(Llm.text("multi-tool-interleaving-complete"))
 
       yield* ui.submit("Run a shell, ask a question, and read the fixture concurrently.")
-      yield* Deferred.await(shellStarted)
+      const shell = yield* shells.take(shellCallID)
+      yield* shell.progress("multi-tool shell remains active\n")
       const sessionID = yield* poll(
         opencode.session.list({ limit: 1, order: "desc" }).pipe(
           Effect.map((sessions) => sessions.data[0]?.id),
@@ -187,17 +171,17 @@ export default defineScript({
         "answered question form",
       )
 
-      yield* Deferred.succeed(releaseShell, undefined)
+      yield* shell.succeed({ output: "multi-tool shell completed\n", exit: 0 })
       yield* Deferred.await(executionInterrupted)
       yield* ui.submit("Recover after the rejected concurrent tool.")
       yield* ui.waitFor("multi-tool-interleaving-complete", { timeout: 15_000 })
       const messages = yield* opencode.message.list({ sessionID, limit: 20, order: "desc" })
-      const tools = messages.data.flatMap((message) =>
+      const toolParts = messages.data.flatMap((message) =>
         message.type === "assistant"
           ? message.content.filter((part) => part.type === "tool")
           : [],
       )
-      const statuses = new Map(tools.map((tool) => [tool.id, tool.state.status]))
+      const statuses = new Map(toolParts.map((tool) => [tool.id, tool.state.status]))
       if (
         statuses.get(shellCallID) !== "completed" ||
         statuses.get(questionCallID) !== "completed" ||

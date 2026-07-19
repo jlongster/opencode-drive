@@ -37,6 +37,8 @@ export interface ScriptContext {
   readonly tuis: OpenCodeTui.Tuis
   readonly server: ScriptServer
   readonly llm: Llm
+  /** Runtime controls for tools declared by name on the script. */
+  readonly tools: Tool.Controls
   readonly artifacts: string
 }
 
@@ -59,8 +61,8 @@ export interface AutomaticScriptDefinition {
   readonly tuiConfig?: OpenCodeTuiConfig
   /** Runs once before OpenCode starts. */
   readonly setup?: Setup
-  /** Declares built-in tool replacements before OpenCode starts. */
-  readonly tools?: Tool.Setup
+  /** Declares runtime-controlled tool names or fixed replacements before OpenCode starts. */
+  readonly tools?: Tool.Configuration
   /** Configures the automatically launched primary TUI. */
   readonly tui?: OpenCodeTui.TuiOptions
   /** Runs after the UI and LLM connections are ready, and again after restart. */
@@ -78,8 +80,8 @@ export interface ManualScriptDefinition {
   readonly tuiConfig?: OpenCodeTuiConfig
   /** Runs once before OpenCode starts. */
   readonly setup?: Setup
-  /** Declares built-in tool replacements before OpenCode starts. */
-  readonly tools?: Tool.Setup
+  /** Declares runtime-controlled tool names or fixed replacements before OpenCode starts. */
+  readonly tools?: Tool.Configuration
   /** Defaults for TUIs launched by the script. */
   readonly tui?: OpenCodeTui.TuiOptions
   /** Runs after the shared service and LLM connection are ready. */
