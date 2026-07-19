@@ -218,6 +218,7 @@ export default defineScript({
         return yield* Effect.fail(
           new Error(`unexpected tool settlement order: ${JSON.stringify(relevant)}`),
         )
+      return undefined
     })),
 })
 
