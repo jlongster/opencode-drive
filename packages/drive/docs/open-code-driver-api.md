@@ -192,6 +192,57 @@ yield* secondary.ui.screenshot("secondary")
 yield* oc.settle()
 ```
 
+## Runtime tool control uses statically declared adapters
+
+Declare the built-in tool names Drive should intercept before OpenCode starts,
+then control each invocation through the live `tools` capability. Undeclared
+tools keep their real OpenCode implementations.
+
+```ts
+const program = OpenCodeDriver.use(
+  { tools: ["shell"] },
+  ({ tools, llm, ui }) =>
+    Effect.gen(function* () {
+      const shells = yield* tools.control("shell")
+      yield* llm.queue(
+        Llm.toolCall({
+          index: 0,
+          id: "call_build",
+          name: "shell",
+          input: { command: "bun run build" },
+        }),
+        Llm.toolCall({
+          index: 1,
+          id: "call_test",
+          name: "shell",
+          input: { command: "bun run test" },
+        }),
+        Llm.finish("tool-calls"),
+      )
+      yield* ui.submit("Build and test")
+
+      const build = yield* shells.take("call_build")
+      const test = yield* shells.take("call_test")
+      yield* test.succeed({ output: "Tests passed\n", exit: 0 })
+      yield* build.succeed({ output: "Build passed\n", exit: 0 })
+    }),
+)
+```
+
+`take(callID)` reserves and accepts one known invocation independently of
+arrival order. `take()` accepts the oldest unclaimed invocation. Exact-ID
+waiters take precedence over generic waiters, so parallel calls may settle in
+any deliberate order. Each call may emit serialized progress and then succeed
+or fail exactly once. `awaitInterrupted()` completes when transport or
+controller interruption wins before terminal settlement.
+
+The program must take and terminally settle every intercepted invocation it
+expects. Driver scope closure fails blocked `take` operations, interrupts
+unresolved calls, and waits for transport cleanup. The callback-style
+`tools(registry)` configuration remains available
+for fixed handlers; callback-controlled tools are not also available through
+the runtime `tools.control` capability.
+
 ## LLM response description is separate from live LLM control
 
 `Llm` is a pure data module. `llm` is the live capability that queues, sends, and serves responses.

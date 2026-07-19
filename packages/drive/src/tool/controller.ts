@@ -1,9 +1,11 @@
 import { fileURLToPath } from "node:url"
 import * as Cause from "effect/Cause"
+import * as Deferred from "effect/Deferred"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Option from "effect/Option"
 import * as Schema from "effect/Schema"
+import * as Semaphore from "effect/Semaphore"
 import type {
   JsonValue,
   OpenCodeConfig,
@@ -11,15 +13,22 @@ import type {
 } from "../project.js"
 import {
   Failure,
+  ControlError,
   ShellInput,
   ShellResult,
   WebFetchInput,
   WebFetchResult,
   WebSearchInput,
   WebSearchResult,
+  type Configuration,
+  type ControlledCall,
+  type ControlledCalls,
+  type ControlledCallsFor,
+  type Controls,
+  type Handler,
+  type Name,
   type Registration,
   type Registry,
-  type Setup,
   type ShellHandler,
   type WebFetchHandler,
   type WebSearchHandler,
@@ -46,6 +55,7 @@ type Definition = {
   readonly invoke: (
     input: unknown,
     index: number,
+    id: string,
     progress: (result: Result) => Effect.Effect<void>,
   ) => Effect.Effect<Result, unknown>
 }
@@ -59,16 +69,38 @@ const ExecutionRequest = Schema.Struct({
 })
 const encoder = new TextEncoder()
 
+function controlError(
+  operation: ControlError["operation"],
+  reason: ControlError["reason"],
+  name: Name,
+  callID?: string,
+) {
+  const message =
+    reason === "not-controlled"
+      ? `tool is not configured for runtime control: ${name}`
+      : reason === "controller-closed"
+        ? callID === undefined
+          ? `tool controller is closed: ${name}`
+          : `${name} tool call ${callID} was interrupted because the controller closed`
+        : reason === "already-claimed"
+          ? `${name} tool call already claimed: ${callID}`
+          : reason === "already-settled"
+            ? `${name} tool call ${callID} is settled`
+            : `${name} tool call ${callID} is interrupted`
+  return new ControlError({ operation, reason, name, callID, message })
+}
+
 export interface Controller {
+  readonly enabled: boolean
+  readonly controls: Controls
   readonly configure: (config: OpenCodeConfig) => void
 }
 
 export function composeSetup(
   controller: Controller,
-  tools: Setup | undefined,
   setup: ProjectSetup | undefined,
 ): ProjectSetup | undefined {
-  if (tools === undefined && setup === undefined) return undefined
+  if (!controller.enabled && setup === undefined) return undefined
   return (context) =>
     Effect.suspend(() => {
       const configured: unknown = setup === undefined
@@ -87,8 +119,13 @@ function isEffect(value: unknown): value is Effect.Effect<unknown, unknown> {
   return Effect.isEffect(value)
 }
 
-export const make = Effect.fn("ToolController.make")(function* (setup?: Setup) {
+export const make = Effect.fn("ToolController.make")(function* (configuration?: Configuration) {
   const definitions = new Map<string, Definition>()
+  const closeControls: Array<Effect.Effect<void>> = []
+  let closed = false
+  const controlledCalls: {
+    [Tool in Name]?: ControlledCallsFor<Tool>
+  } = {}
   const add = (name: string, definition: Definition) => {
     if (definitions.has(name)) throw new Error(`tool handler already registered: ${name}`)
     definitions.set(name, definition)
@@ -97,62 +134,106 @@ export const make = Effect.fn("ToolController.make")(function* (setup?: Setup) {
   function handle(name: "webfetch", handler: WebFetchHandler): void
   function handle(name: "websearch", handler: WebSearchHandler): void
   function handle(...registration: Registration) {
-      switch (registration[0]) {
-        case "shell": {
-          const handler = registration[1]
-          add("shell", {
-            schema: ShellInput,
-            invoke: (raw, index, progress) =>
-              Effect.gen(function* () {
-                const input = yield* Schema.decodeUnknownEffect(ShellInput)(raw)
-                const result = yield* handler({
-                  input,
-                  index,
-                  progress: (value) => progress(typeof value === "string" ? { output: value } : value),
-                })
-                return yield* Schema.decodeUnknownEffect(ShellResult)(result)
-              }),
-          })
-          return
-        }
-        case "webfetch": {
-          const handler = registration[1]
-          add("webfetch", {
-            schema: WebFetchInput,
-            invoke: (raw, index, progress) =>
-              Effect.gen(function* () {
-                const input = yield* Schema.decodeUnknownEffect(WebFetchInput)(raw)
-                const result = yield* handler({
-                  input,
-                  index,
-                  progress: (value) => progress(typeof value === "string" ? { output: value } : value),
-                })
-                return yield* Schema.decodeUnknownEffect(WebFetchResult)(result)
-              }),
-          })
-          return
-        }
-        case "websearch": {
-          const handler = registration[1]
-          add("websearch", {
-            schema: WebSearchInput,
-            invoke: (raw, index, progress) =>
-              Effect.gen(function* () {
-                const input = yield* Schema.decodeUnknownEffect(WebSearchInput)(raw)
-                const result = yield* handler({
-                  input,
-                  index,
-                  progress: (value) => progress(typeof value === "string" ? { output: value } : value),
-                })
-                return yield* Schema.decodeUnknownEffect(WebSearchResult)(result)
-              }),
-          })
-        }
+    switch (registration[0]) {
+      case "shell": {
+        const handler = registration[1]
+        add("shell", {
+          schema: ShellInput,
+          invoke: (raw, index, id, progress) =>
+            Effect.gen(function* () {
+              const input = yield* Schema.decodeUnknownEffect(ShellInput)(raw)
+              const result = yield* handler({
+                id,
+                input,
+                index,
+                progress: (value) => progress(typeof value === "string" ? { output: value } : value),
+              })
+              return yield* Schema.decodeUnknownEffect(ShellResult)(result)
+            }),
+        })
+        return
       }
+      case "webfetch": {
+        const handler = registration[1]
+        add("webfetch", {
+          schema: WebFetchInput,
+          invoke: (raw, index, id, progress) =>
+            Effect.gen(function* () {
+              const input = yield* Schema.decodeUnknownEffect(WebFetchInput)(raw)
+              const result = yield* handler({
+                id,
+                input,
+                index,
+                progress: (value) => progress(typeof value === "string" ? { output: value } : value),
+              })
+              return yield* Schema.decodeUnknownEffect(WebFetchResult)(result)
+            }),
+        })
+        return
+      }
+      case "websearch": {
+        const handler = registration[1]
+        add("websearch", {
+          schema: WebSearchInput,
+          invoke: (raw, index, id, progress) =>
+            Effect.gen(function* () {
+              const input = yield* Schema.decodeUnknownEffect(WebSearchInput)(raw)
+              const result = yield* handler({
+                id,
+                input,
+                index,
+                progress: (value) => progress(typeof value === "string" ? { output: value } : value),
+              })
+              return yield* Schema.decodeUnknownEffect(WebSearchResult)(result)
+            }),
+        })
+      }
+    }
   }
   const registry: Registry = { handle }
-  setup?.(registry)
-  if (definitions.size === 0) return { configure() {} } satisfies Controller
+  if (typeof configuration === "function") configuration(registry)
+  if (Array.isArray(configuration)) {
+    for (const name of configuration) {
+      switch (name) {
+        case "shell": {
+          const controlled = makeControlledHandler<ShellInput, ShellResult>("shell")
+          handle("shell", controlled.handler)
+          controlledCalls.shell = controlled.calls
+          closeControls.push(controlled.close)
+          break
+        }
+        case "webfetch": {
+          const controlled = makeControlledHandler<WebFetchInput, WebFetchResult>("webfetch")
+          handle("webfetch", controlled.handler)
+          controlledCalls.webfetch = controlled.calls
+          closeControls.push(controlled.close)
+          break
+        }
+        case "websearch": {
+          const controlled = makeControlledHandler<WebSearchInput, WebSearchResult>("websearch")
+          handle("websearch", controlled.handler)
+          controlledCalls.websearch = controlled.calls
+          closeControls.push(controlled.close)
+          break
+        }
+        default:
+          throw new Error(`unsupported controlled tool: ${String(name)}`)
+      }
+    }
+  }
+  function control<Tool extends Name>(
+    name: Tool,
+  ): Effect.Effect<ControlledCallsFor<Tool>, ControlError> {
+    if (closed)
+      return Effect.fail(controlError("control", "controller-closed", name))
+    const calls = controlledCalls[name]
+    return calls === undefined
+      ? Effect.fail(controlError("control", "not-controlled", name))
+      : Effect.succeed(calls)
+  }
+  const controls: Controls = { control }
+  if (definitions.size === 0)
+    return { enabled: false, controls, configure() {} } satisfies Controller
 
   const token = crypto.randomUUID()
   const indexes = new Map<string, number>()
@@ -195,6 +276,8 @@ export const make = Effect.fn("ToolController.make")(function* (setup?: Setup) {
     (server) =>
       Effect.gen(function* () {
         closing = true
+        closed = true
+        yield* Effect.all(closeControls, { discard: true })
         yield* Effect.sync(() => {
           for (const controller of active.keys())
             controller.abort(new Error("Drive tool controller stopped"))
@@ -214,6 +297,8 @@ export const make = Effect.fn("ToolController.make")(function* (setup?: Setup) {
   )
 
   return {
+    enabled: true,
+    controls,
     configure(config) {
       const current = config.plugins
       if (current !== undefined && !Array.isArray(current))
@@ -228,6 +313,205 @@ export const make = Effect.fn("ToolController.make")(function* (setup?: Setup) {
     },
   } satisfies Controller
 })
+
+function makeControlledHandler<Input, Output>(name: Name): {
+  readonly calls: ControlledCalls<Input, Output>
+  readonly handler: Handler<Input, Output>
+  readonly close: Effect.Effect<void>
+} {
+  type Call = ControlledCall<Input, Output>
+  type Waiter = {
+    readonly id?: string
+    readonly resume: (effect: Effect.Effect<Call, ControlError>) => void
+    delivered?: Active
+  }
+  type Interruption = "transport-interrupted" | "controller-closed"
+  type Active = {
+    readonly call: Call
+    claimed: boolean
+    readonly interrupt: (reason: Interruption) => void
+  }
+
+  const records = new Map<string, Active>()
+  const waiters: Waiter[] = []
+  let closed = false
+
+  const deliver = (record: Active) => {
+    // A caller waiting for this exact ID wins over an earlier generic waiter.
+    const exact = waiters.findIndex((waiter) => waiter.id === record.call.id)
+    const index = exact >= 0
+      ? exact
+      : waiters.findIndex((waiter) => waiter.id === undefined)
+    if (index < 0) {
+      record.claimed = false
+      return
+    }
+    const [waiter] = waiters.splice(index, 1)
+    if (waiter === undefined)
+      throw new Error(`missing ${name} tool call waiter`)
+    record.claimed = true
+    waiter.delivered = record
+    waiter.resume(Effect.succeed(record.call))
+  }
+
+  const offer = (record: Active) =>
+    Effect.suspend(() => {
+      const id = record.call.id
+      if (closed)
+        return Effect.fail(new Failure({
+          message: controlError("take", "controller-closed", name, id).message,
+        }))
+      if (records.has(id))
+        return Effect.fail(new Failure({
+          message: `duplicate ${name} tool call ID: ${id}`,
+        }))
+      records.set(id, record)
+      deliver(record)
+      return Effect.void
+    })
+
+  function take(): Effect.Effect<Call, ControlError>
+  function take(id: string): Effect.Effect<Call, ControlError>
+  function take(id?: string): Effect.Effect<Call, ControlError> {
+    return Effect.callback<Call, ControlError>((resume) => {
+      if (closed) {
+        resume(Effect.fail(controlError("take", "controller-closed", name, id)))
+        return undefined
+      }
+      if (
+        id !== undefined &&
+        (records.get(id)?.claimed === true || waiters.some((waiter) => waiter.id === id))
+      ) {
+        resume(Effect.fail(controlError("take", "already-claimed", name, id)))
+        return undefined
+      }
+      let record = id === undefined ? undefined : records.get(id)
+      if (id === undefined) {
+        for (const candidate of records.values()) {
+          if (candidate.claimed) continue
+          record = candidate
+          break
+        }
+      }
+      if (record !== undefined) {
+        record.claimed = true
+        resume(Effect.succeed(record.call))
+        return Effect.sync(() => {
+          if (!closed && records.get(record.call.id) === record) {
+            record.claimed = false
+            deliver(record)
+          }
+          return undefined
+        })
+      }
+      const waiter: Waiter = { id, resume }
+      waiters.push(waiter)
+      return Effect.sync(() => {
+        const index = waiters.indexOf(waiter)
+        if (index >= 0) {
+          waiters.splice(index, 1)
+          return undefined
+        }
+        const delivered = waiter.delivered
+        if (
+          delivered !== undefined &&
+          !closed &&
+          records.get(delivered.call.id) === delivered
+        ) {
+          delivered.claimed = false
+          deliver(delivered)
+        }
+        return undefined
+      })
+    })
+  }
+
+  const handler: Handler<Input, Output> = (context) =>
+    Effect.uninterruptibleMask((restore) => Effect.gen(function* () {
+      const result = Deferred.makeUnsafe<Output, Failure>()
+      const interrupted = Deferred.makeUnsafe<void>()
+      const operations = Semaphore.makeUnsafe(1)
+      let state: "pending" | "settled" | Interruption = "pending"
+      const unavailable = (operation: ControlError["operation"]) => {
+        if (state === "pending") return undefined
+        return controlError(
+          operation,
+          state === "settled" ? "already-settled" : state,
+          name,
+          context.id,
+        )
+      }
+      const commit = (
+        operation: "succeed" | "fail",
+        completion: Effect.Effect<Output, Failure>,
+      ) =>
+        // Accepted progress must finish before the one terminal commitment.
+        operations.withPermit(
+          Effect.suspend(() => {
+            const failure = unavailable(operation)
+            if (failure !== undefined) return Effect.fail(failure)
+            return Effect.sync(() => {
+              state = "settled"
+              return Deferred.doneUnsafe(result, completion)
+                ? undefined
+                : controlError(operation, "already-settled", name, context.id)
+            }).pipe(
+              Effect.flatMap((failure) =>
+                failure === undefined ? Effect.void : Effect.fail(failure),
+              ),
+            )
+          }),
+        )
+      const call: Call = {
+        id: context.id,
+        input: context.input,
+        index: context.index,
+        progress: (output) =>
+          operations.withPermit(
+            Effect.suspend(() => {
+              const failure = unavailable("progress")
+              return failure === undefined ? context.progress(output) : Effect.fail(failure)
+            }),
+          ),
+        succeed: (output) => commit("succeed", Effect.succeed(output)),
+        fail: (message) => commit("fail", Effect.fail(new Failure({ message }))),
+        awaitInterrupted: () => Deferred.await(interrupted),
+      }
+      const record: Active = {
+        call,
+        claimed: false,
+        interrupt: (reason) => {
+          if (state !== "pending") return
+          state = reason
+          Deferred.doneUnsafe(interrupted, Effect.void)
+          Deferred.doneUnsafe(result, Effect.interrupt)
+        },
+      }
+      return yield* offer(record).pipe(
+        Effect.andThen(restore(Deferred.await(result))),
+        Effect.onInterrupt(() => Effect.sync(() => record.interrupt("transport-interrupted"))),
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (records.get(context.id) === record)
+              records.delete(context.id)
+          }),
+        ),
+      )
+    }))
+
+  const close = Effect.sync(() => {
+    if (closed) return
+    closed = true
+    for (const waiter of waiters)
+      waiter.resume(Effect.fail(
+        controlError("take", "controller-closed", name, waiter.id),
+      ))
+    waiters.length = 0
+    for (const record of records.values()) record.interrupt("controller-closed")
+  })
+
+  return { calls: { take }, handler, close }
+}
 
 function execute(
   request: Request,
@@ -275,7 +559,12 @@ function execute(
       }
     }
     const index = nextIndex(indexes, name)
-    return yield* definition.invoke(input, index, (value) => send({ type: "progress", result: value }))
+    return yield* definition.invoke(
+      input,
+      index,
+      body.context.callID,
+      (value) => send({ type: "progress", result: value }),
+    )
   })
   void writer.closed.catch((cause) => controller.abort(cause))
   const completion = (async () => {
@@ -323,7 +612,7 @@ function startBackgroundShell(
 ): BackgroundJob {
   const controller = new AbortController()
   let output = ""
-  const result = definition.invoke(input, index, (value) =>
+  const result = definition.invoke(input, index, shellID, (value) =>
     Effect.sync(() => {
       encodeEvent({ type: "progress", result: value })
       output = value.output

@@ -5,7 +5,7 @@ sites are documented in [OpenCode Driver API](./open-code-driver-api.md).
 
 ## Domain Model
 
-`OpenCodeDriver` composes four resources:
+`OpenCodeDriver` composes these resources:
 
 ```text
 OpenCodeDriver
@@ -15,6 +15,7 @@ OpenCodeDriver
   tuis          additional frontend process factory
   ui            convenience alias for tui.ui
   llm           shared simulated-model control
+  tools         runtime control for declared tool adapters
 ```
 
 The names distinguish the two kinds of client involved:
@@ -24,6 +25,8 @@ The names distinguish the two kinds of client involved:
   optional `recording`.
 - `Tuis` launches and supervises additional frontend processes connected to
   the same server.
+- `tools` accepts independently controlled invocations for adapters declared
+  before OpenCode starts.
 - Transport-level JSON-RPC clients remain private implementation details.
 
 `defineScript` consumes these exact capabilities. It adds a branded module
@@ -41,6 +44,8 @@ Effect Scope
     server process
     TUI processes
     launch descriptors and logs
+    CLI script ToolController
+      controlled invocation exchanges
   OpenCodeServer
     backend simulation connection
     LLM controller
@@ -48,7 +53,15 @@ Effect Scope
     TUI supervisor
       primary TUI scope
       additional TUI scopes
+  Library ToolController
+    controlled invocation exchanges
 ```
+
+Library drivers create their ToolController before project preparation and
+pass that controller into `OpenCodeInstance`. CLI scripts create the controller
+inside `OpenCodeInstance`. Prepared drivers and script contexts derive controls
+from their instance, so the controller that wrote the plugin configuration is
+structurally the controller exposed at runtime.
 
 `OpenCodeDriver.make(options)` requires `Scope.Scope`. It returns once the
 server, generated SDK client, primary TUI, and simulation connections are
@@ -70,6 +83,20 @@ Settlement is one shared terminal operation. It runs in this order:
 rejects new launches and `llm` rejects new responses. `OpenCodeDriver.use`
 combines a user-program failure with a settlement failure rather than hiding
 either cause.
+
+## Tool Control Lifecycle
+
+`ToolController` installs only statically declared or callback-registered
+adapters into OpenCode's project configuration. Each runtime-controlled tool
+owns one exchange that matches incoming requests to exact-ID or FIFO waiters.
+Each accepted call owns a terminal Deferred, an interruption Deferred, and a
+one-permit Semaphore that serializes progress with terminal commitment.
+
+Controller scope release closes blocked waiters, marks unresolved calls
+interrupted, aborts active HTTP transports, and waits for handler finalizers.
+Terminal commitment uses a synchronous first-writer-wins Deferred completion;
+Drive guarantees exactly-once acceptance inside the controller, not delivery
+across a transport disconnect.
 
 ## TUI Lifecycle
 

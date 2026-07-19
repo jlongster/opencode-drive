@@ -184,43 +184,69 @@ Drive prefers protocol negotiation and reports explicit legacy fallback. Set `op
 
 ### Simulated Shell Execution
 
-Use `tools` to replace shell execution without changing the model-visible tool
-schema. The handler receives typed input, a zero-based call index, and an Effect
-progress function. Foreground handler Effects are interrupted when OpenCode
-interrupts the session, the transport disconnects, or Drive shuts down; use
-Effect finalizers for cancellation cleanup. Detached background shell handlers
-continue after their launch response and are interrupted when Drive shuts down.
-Unregistered tools remain real.
+Declare the built-in tools Drive should intercept, then control each invocation
+from the running program. Unregistered tools remain real. Calls may be accepted
+in arrival order or by the stable ID supplied in `Llm.toolCall`, so parallel
+invocations can progress and settle independently.
+
+```ts
+import { Effect } from "effect"
+import { Llm, OpenCodeDriver } from "opencode-drive"
+
+export default OpenCodeDriver.use({ tools: ["shell"] }, ({ tools, llm, ui }) =>
+  Effect.gen(function* () {
+    const shells = yield* tools.control("shell")
+    yield* llm.queue(
+      Llm.toolCall({
+        index: 0,
+        id: "call_shell",
+        name: "shell",
+        input: { command: "compile" },
+      }),
+      Llm.finish("tool-calls"),
+    )
+    yield* ui.submit("Compile the project")
+    const shell = yield* shells.take("call_shell")
+    yield* shell.progress(`Running ${shell.input.command}\n`)
+    yield* shell.succeed({ output: "Controlled success\n", exit: 0 })
+  }),
+)
+```
+
+The same declaration and runtime `tools` capability are available in
+`defineScript`. Supported adapters are `shell`, `webfetch`, and `websearch`.
+Each progress value replaces the visible tool output, so send accumulated text
+when earlier lines should remain visible. Calls settle exactly once;
+`awaitInterrupted()` observes session interruption or transport disconnection.
+
+The callback form remains available for fixed behavior that does not need
+runtime orchestration:
 
 ```ts
 import { Effect } from "effect"
 import { Tool } from "opencode-drive"
 
 const tools = (registry: Tool.Registry) => {
-  registry.handle("shell", ({ input, index, progress }) =>
+  registry.handle("shell", ({ input, progress }) =>
     Effect.gen(function* () {
       yield* progress(`Running ${input.command}\n`)
-      if (index === 0)
-        return yield* new Tool.Failure({ message: "Controlled failure" })
       return { output: "Controlled success\n", exit: 0 }
     }),
   )
 }
-
-export default OpenCodeDriver.use({ tools }, (driver) => program(driver))
 ```
 
-The same `tools` callback is accepted by `defineScript`. Supported adapters are
-`shell`, `webfetch`, and `websearch`; unregistered tools remain real.
-Each progress value replaces the visible tool output, so send accumulated text
-when earlier lines should remain visible.
+Foreground callback handler Effects are interrupted when OpenCode interrupts
+the session, the transport disconnects, or Drive shuts down. Detached
+background shell handlers continue after their launch response and are
+interrupted when Drive shuts down.
 
 ## Effect Scripts
 
 Use `defineScript` with `start --script` when the workflow must have a stable
 instance name, be visible, rerun on `restart`, or explicitly launch and kill
 its server and TUIs. `setup` and `run` return Effects. Operations on `fs`,
-`ui`, `llm`, `server`, and `tuis` also return Effects; there is no
+`ui`, `llm`, `tools`, `server`, and `tuis` also return Effects; there is no
 Promise API or compatibility shim.
 
 ```ts

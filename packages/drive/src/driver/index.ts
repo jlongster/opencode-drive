@@ -33,7 +33,7 @@ export interface Options {
   readonly config?: OpenCodeConfig
   readonly tuiConfig?: OpenCodeTuiConfig
   readonly setup?: Setup
-  readonly tools?: Tool.Setup
+  readonly tools?: Tool.Configuration
   readonly tui?: OpenCodeTui.TuiOptions
   readonly opencode?: OpenCodeServer.Target
   readonly keepArtifacts?: boolean
@@ -46,6 +46,8 @@ export interface Driver {
   /** Convenience alias for the primary TUI's UI. */
   readonly ui: OpenCodeUi.Ui
   readonly llm: Llm
+  /** Runtime controls for tools declared by name in the driver options. */
+  readonly tools: Tool.Controls
   readonly tuis: OpenCodeTui.Tuis
   readonly artifacts: string
   /** Validates queued LLM work, stops TUIs, and exports recordings. */
@@ -65,7 +67,7 @@ const makeWithServices = Effect.fn("OpenCodeDriver.makeWithServices")(
       project: options.project,
       config: options.config,
       tui: options.tuiConfig,
-      setup: ToolController.composeSetup(toolController, options.tools, options.setup),
+      setup: ToolController.composeSetup(toolController, options.setup),
       keepArtifacts: options.keepArtifacts,
     })
     const instance = yield* OpenCodeInstance.make({
@@ -76,7 +78,7 @@ const makeWithServices = Effect.fn("OpenCodeDriver.makeWithServices")(
       dev: options.opencode?.dev,
       env: options.opencode?.env,
       visible: options.opencode?.visible,
-    }).pipe(Effect.mapError((cause) => error("server.prepare", cause)))
+    }, toolController).pipe(Effect.mapError((cause) => error("server.prepare", cause)))
     const prepared = yield* PreparedDriver.makeWithServices(instance, {
       visible: options.opencode?.visible,
       tui: options.tui,

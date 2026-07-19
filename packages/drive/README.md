@@ -286,27 +286,19 @@ Declared `config` and `tuiConfig` values are deeply merged over fixture
 `.opencode/opencode.jsonc` and `.opencode/tui.jsonc` files. Arrays replace
 instead of merging, and mutations made in `setup` take final precedence.
 
-Declare deterministic replacements for supported built-in tools with `tools`.
-Drive owns the OpenCode schema and plugin adapter; the script only handles typed
-input and emits progress or a terminal result:
+Declare which built-in tools Drive should intercept with `tools`, then control
+their invocations inside `run`. Each tool controller accepts calls in arrival
+order or by the stable call ID chosen in `Llm.toolCall`:
 
 ```ts
 import { Effect } from "effect"
-import { defineScript, Llm, Tool } from "opencode-drive"
+import { defineScript, Llm } from "opencode-drive"
 
 export default defineScript({
-  tools(tools) {
-    tools.handle("shell", ({ input, index, progress }) =>
-      Effect.gen(function* () {
-        yield* progress(`Running call ${index}: ${input.command}...\n`)
-        if (index === 0)
-          return yield* new Tool.Failure({ message: "Controlled failure" })
-        return { output: "Controlled output\n", exit: 0 }
-      }),
-    )
-  },
-  run: ({ ui, llm }) =>
+  tools: ["shell"],
+  run: ({ ui, llm, tools }) =>
     Effect.gen(function* () {
+      const shells = yield* tools.control("shell")
       yield* llm.queue(
         Llm.toolCall({
           index: 0,
@@ -317,19 +309,29 @@ export default defineScript({
         Llm.finish("tool-calls"),
       )
       yield* ui.submit("Deploy production")
+      const shell = yield* shells.take("call_shell")
+      yield* shell.progress(`Running: ${shell.input.command}...\n`)
+      yield* shell.succeed({ output: "Controlled output\n", exit: 0 })
     }),
 })
 ```
 
-Foreground tool handler Effects are interrupted when OpenCode interrupts the
-session, the transport disconnects, or Drive shuts down. Use Effect finalizers
-such as `Effect.onInterrupt` or `Effect.ensuring` for cancellation cleanup.
-Detached background shell handlers continue after their launch response and
-are interrupted when Drive shuts down.
+Use `calls.take(id)` to coordinate known parallel calls independently, or
+`calls.take()` to accept the next unclaimed invocation. A controlled call can
+emit progress and then succeed or fail exactly once. `awaitInterrupted()`
+observes OpenCode interruption or transport disconnection. Drive interrupts
+all unresolved calls when it shuts down.
 
-Only registered tools are replaced. Unhandled tools continue to use OpenCode's
-real implementations. Each `progress` value replaces the visible tool output;
-send accumulated output when earlier lines should remain visible.
+The original `tools(registry)` callback remains available for fixed handlers
+that do not need orchestration from `run`. Foreground handler Effects are
+interrupted when OpenCode interrupts the session, the transport disconnects,
+or Drive shuts down. Detached background shell handlers continue after their
+launch response and are interrupted when Drive shuts down.
+
+Only declared or registered tools are replaced. Unhandled tools continue to
+use OpenCode's real implementations. Each `progress` value replaces the
+visible tool output; send accumulated output when earlier lines should remain
+visible.
 Supported adapters are `shell`, `webfetch`, and `websearch`; each handler
 receives its canonical typed V2 input and maintains an independent call index.
 When a shell call sets `background: true`, Drive returns immediately with the
@@ -349,7 +351,7 @@ Promise-style `setup`, `run`, or `ui.waitFor` callback, it prints the equivalent
 Effect shape after the TypeScript diagnostics. Use `Effect.sleep(milliseconds)`
 for unconditional delays.
 
-The `fs`, `ui`, `llm`, `server`, and `tuis` capabilities expose
+The `fs`, `ui`, `llm`, `tools`, `server`, and `tuis` capabilities expose
 Effect-returning operations. Compose them with `yield*`, `Effect.flatMap`, or
 other Effect operators. Scripts receive the same `Ui`, `Tui`, `Tuis`, and TUI
 options as `OpenCodeDriver`; `defineScript` does not define a second

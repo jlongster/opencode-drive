@@ -42,7 +42,7 @@ export interface Prepared {
 export const makeWithServices = Effect.fn("OpenCodeDriver.makePreparedWithServices")(
   function* (
     instance: OpenCodeInstance.Instance,
-    options: Options = {},
+    options: Options,
   ) {
     const server = yield* OpenCodeServer.make({
       instance,
@@ -110,6 +110,7 @@ export const makeWithServices = Effect.fn("OpenCodeDriver.makePreparedWithServic
           tui: primary,
           ui: primary.ui,
           llm,
+          tools: instance.tools,
           tuis: server.tuis,
           artifacts: instance.artifacts,
           settle: () => settle,
@@ -142,7 +143,7 @@ export const makeWithServices = Effect.fn("OpenCodeDriver.makePreparedWithServic
 
 export const make = (
   instance: OpenCodeInstance.Instance,
-  options: Options = {},
+  options: Options,
 ) =>
   makeWithServices(instance, options).pipe(
     Effect.provide(SimulationConnector.layer),
