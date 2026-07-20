@@ -35,6 +35,14 @@ export class SimulationCompatibilityError extends Schema.TaggedErrorClass<Simula
   },
 ) {}
 
+export class SimulationEventStreamError extends Schema.TaggedErrorClass<SimulationEventStreamError>()(
+  "SimulationEventStreamError",
+  {
+    endpoint: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
 export const EndpointCompatibility = Schema.TaggedUnion({
   Negotiated: {
     endpoint: Schema.String,
@@ -98,7 +106,7 @@ export interface BackendConnection {
     Schema.SchemaError
   >
   readonly toolEvents: Stream.Stream<ToolEvent, Schema.SchemaError>
-  readonly flushToolEvents: () => Effect.Effect<void>
+  readonly flushToolEvents: () => Effect.Effect<void, SimulationEventStreamError>
   readonly closed: Effect.Effect<void>
   readonly attach: () => Effect.Effect<
     { readonly attached: true },
@@ -309,8 +317,16 @@ export const backend = Effect.fn("SimulationConnector.backend")(function* (
     withTimeout("tool.fail", rpc["tool.fail"](params))
   const flushToolEvents = Effect.fn("SimulationConnector.flushToolEvents")(function* () {
     const completed = yield* Deferred.make<void>()
-    yield* Queue.offer(toolEvents, { type: "barrier", completed })
+    const offered = yield* Queue.offer(toolEvents, { type: "barrier", completed })
+    if (!offered)
+      return yield* Effect.fail(
+        new SimulationEventStreamError({
+          endpoint,
+          message: "Dynamic tool event stream is unavailable",
+        }),
+      )
     yield* Deferred.await(completed)
+    return undefined
   })
   return {
     endpoint,

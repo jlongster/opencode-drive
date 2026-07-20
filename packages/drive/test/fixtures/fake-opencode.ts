@@ -50,7 +50,11 @@ const api = role === "service"
       },
     })
   : undefined
-if (api !== undefined && process.env.XDG_STATE_HOME) {
+if (
+  api !== undefined &&
+  process.env.XDG_STATE_HOME &&
+  !process.argv.includes("omit-service-registration")
+) {
   const directory = `${process.env.XDG_STATE_HOME}/opencode`
   await mkdir(directory, { recursive: true })
   await Bun.write(

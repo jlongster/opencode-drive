@@ -33,9 +33,14 @@ export interface BackendAttachment {
 
 export interface Controller {
   readonly controls: DynamicControls
-  readonly connect: (
-    backend: BackendConnection,
-  ) => Effect.Effect<BackendAttachment, LifecycleError>
+  readonly connect: (backend: BackendConnection) => Effect.Effect<BackendAttachment, LifecycleError>
+  readonly connectFrom: <E, R>(
+    backend: Effect.Effect<BackendConnection, E, R>,
+  ) => Effect.Effect<
+    { readonly backend: BackendConnection; readonly attachment: BackendAttachment },
+    E | LifecycleError,
+    R
+  >
   readonly endGeneration: Effect.Effect<void>
   readonly settle: Effect.Effect<void, LifecycleError>
   readonly shutdown: Effect.Effect<void>
@@ -60,6 +65,8 @@ type Active = {
 
 type AttachmentIntent = {
   readonly params: AttachParams
+  previous: AttachmentIntent | undefined
+  readonly rejection: Deferred.Deferred<never, LifecycleError>
   attempted: boolean
 }
 
@@ -76,16 +83,29 @@ export const make = Effect.fn("ToolProducer.make")(function* (
   const lifecycle = yield* Semaphore.make(1)
   const attachmentCalls = yield* Semaphore.make(1)
   const attachmentLock = yield* Semaphore.make(1)
+  const connectionCalls = yield* Semaphore.make(1)
   const records = new Map<string, Active>()
   const waiters: Waiter[] = []
   const completed = new Map<string, string>()
+  const unclaimedCancellations: Active[] = []
   const backendChanges = yield* Queue.sliding<void>(1)
   const failure = yield* Deferred.make<never, LifecycleError>()
+  const settlementStarted = yield* Deferred.make<void>()
   const current = yield* Ref.make<
-    | { readonly backend: BackendConnection; readonly scope: Scope.Scope }
+    | {
+        readonly backend: BackendConnection
+        readonly scope: Scope.Scope
+        readonly disconnected: Deferred.Deferred<void>
+      }
     | undefined
   >(undefined)
   let desired: AttachmentIntent | undefined
+  let acknowledged: AttachmentIntent | undefined
+  let terminalFailure: LifecycleError | undefined
+  let generationActive = false
+  let generationEnded = Deferred.makeUnsafe<void>()
+  let settling = false
+  let settled = false
   let closed = false
 
   const lifecycleError = (
@@ -101,9 +121,21 @@ export const make = Effect.fn("ToolProducer.make")(function* (
       ...(callID === undefined ? {} : { callID }),
     })
 
-  const notifyBackend = Queue.offer(backendChanges, undefined).pipe(
-    Effect.asVoid,
-  )
+  const rejectIntent = (intent: AttachmentIntent, error: LifecycleError) =>
+    Effect.sync(() => {
+      if (desired === intent) desired = intent.previous
+      if (acknowledged === intent) acknowledged = intent.previous
+      Deferred.doneUnsafe(intent.rejection, Effect.fail(error))
+    })
+
+  const publishFailure = (error: LifecycleError) =>
+    Effect.sync(() => {
+      if (terminalFailure !== undefined) return
+      terminalFailure = error
+      Deferred.doneUnsafe(failure, Effect.fail(error))
+    })
+
+  const notifyBackend = Queue.offer(backendChanges, undefined).pipe(Effect.asVoid)
 
   const remember = (id: string, fingerprint: string) => {
     completed.set(id, fingerprint)
@@ -111,6 +143,19 @@ export const make = Effect.fn("ToolProducer.make")(function* (
       const oldest = completed.keys().next().value
       if (oldest !== undefined) completed.delete(oldest)
     }
+  }
+
+  const retainCancellation = (record: Active) => {
+    unclaimedCancellations.push(record)
+    if (unclaimedCancellations.length <= 256) return
+    const oldest = unclaimedCancellations.shift()
+    if (
+      oldest !== undefined &&
+      records.get(oldest.call.id) === oldest &&
+      oldest.state === "cancelled" &&
+      !oldest.claimed
+    )
+      records.delete(oldest.call.id)
   }
 
   const deliver = (record: Active) => {
@@ -392,8 +437,7 @@ export const make = Effect.fn("ToolProducer.make")(function* (
         const existing = records.get(invocation.id)
         if (existing !== undefined) {
           if (existing.fingerprint !== fingerprint)
-            yield* Deferred.fail(
-              failure,
+            yield* publishFailure(
               lifecycleError(
                 "take",
                 "rejected",
@@ -406,8 +450,7 @@ export const make = Effect.fn("ToolProducer.make")(function* (
         const settled = completed.get(invocation.id)
         if (settled !== undefined) {
           if (settled !== fingerprint)
-            yield* Deferred.fail(
-              failure,
+            yield* publishFailure(
               lifecycleError(
                 "take",
                 "rejected",
@@ -432,13 +475,24 @@ export const make = Effect.fn("ToolProducer.make")(function* (
         remember(cancellation.id, record.fingerprint)
         Deferred.doneUnsafe(record.cancelled, Effect.succeed(cancellation))
         if (record.claimed) records.delete(cancellation.id)
-        else deliver(record)
+        else {
+          deliver(record)
+          if (!record.claimed) retainCancellation(record)
+        }
       }),
     )
 
-  const connect: Controller["connect"] = (backend) =>
+  const connectBackend: Controller["connect"] = (backend) =>
     lifecycle.withPermit(
       Effect.gen(function* () {
+        if (closed)
+          return yield* Effect.fail(
+            lifecycleError(
+              "attach",
+              "controller-closed",
+              "dynamic tool controller is closed",
+            ),
+          )
         if ((yield* Ref.get(current)) !== undefined)
           return yield* Effect.fail(
             lifecycleError(
@@ -459,39 +513,46 @@ export const make = Effect.fn("ToolProducer.make")(function* (
             )
           }),
           Effect.matchCauseEffect({
-            onFailure: (cause) =>
-              Deferred.fail(
-                failure,
-                lifecycleError(
-                  "take",
-                  "rejected",
+              onFailure: (cause) => {
+                const error = lifecycleError(
+                "take",
+                "rejected",
                   `dynamic tool event stream failed: ${Cause.pretty(cause)}`,
-                ),
-              ).pipe(Effect.asVoid),
+                )
+                return publishFailure(error)
+            },
             onSuccess: () => Effect.void,
           }),
           Effect.forkIn(scope),
         )
+        let replayed: AttachmentIntent | undefined
         const applied = yield* Effect.exit(
           attachmentLock.withPermit(
             Effect.suspend(() => {
               const intent = desired
               if (intent === undefined) return Effect.void
+              replayed = intent
               intent.attempted = true
+              const reject = (error: unknown) =>
+                lifecycleError(
+                  "attach",
+                  isTransientConnectionError(error)
+                    ? "transport-interrupted"
+                    : "rejected",
+                  String(error),
+                )
               return whileConnected(
                 backend,
                 "attach",
                 backend.attachTools(intent.params.tools),
               ).pipe(
-                Effect.mapError((error) =>
-                  lifecycleError(
-                    "attach",
-                    isTransientConnectionError(error)
-                      ? "transport-interrupted"
-                      : "rejected",
-                    String(error),
-                  ),
+                Effect.tapError((error) =>
+                  error instanceof SimulationRequestError ||
+                  error instanceof SimulationCompatibilityError
+                    ? rejectIntent(intent, reject(error))
+                    : Effect.void,
                 ),
+                Effect.mapError(reject),
               )
             }),
           ),
@@ -499,13 +560,27 @@ export const make = Effect.fn("ToolProducer.make")(function* (
         if (Exit.isFailure(applied)) {
           yield* Scope.close(scope, Exit.void)
           const defect = Cause.squash(applied.cause)
-          if (Schema.isSchemaError(defect))
-            return yield* Effect.fail(
-              lifecycleError("attach", "rejected", defect.message),
-            )
+          if (Schema.isSchemaError(defect)) {
+            const error = lifecycleError("attach", "rejected", defect.message)
+            if (replayed !== undefined) yield* rejectIntent(replayed, error)
+            return yield* Effect.fail(error)
+          }
+          const found = Cause.findErrorOption(applied.cause)
+          if (
+            replayed !== undefined &&
+            found._tag === "Some" &&
+            found.value instanceof LifecycleError &&
+            found.value.reason === "rejected"
+          )
+            yield* rejectIntent(replayed, found.value)
           return yield* Effect.failCause(applied.cause)
         }
-        yield* Ref.set(current, { backend, scope })
+        yield* Effect.sync(() => {
+          if (!generationActive) generationEnded = Deferred.makeUnsafe<void>()
+          generationActive = true
+        })
+        const disconnected = Deferred.makeUnsafe<void>()
+        yield* Ref.set(current, { backend, scope, disconnected })
         yield* notifyBackend
         const detach = Effect.fn("ToolProducer.detach")(function* () {
           const shouldClose = yield* lifecycle.withPermit(
@@ -513,6 +588,7 @@ export const make = Effect.fn("ToolProducer.make")(function* (
               const attached = yield* Ref.get(current)
               if (attached?.backend !== backend) return false
               yield* Ref.set(current, undefined)
+              Deferred.doneUnsafe(disconnected, Effect.void)
               yield* notifyBackend
               return true
             }),
@@ -522,6 +598,86 @@ export const make = Effect.fn("ToolProducer.make")(function* (
         return { detach }
       }),
     )
+
+  const connectionClosed = () =>
+    lifecycleError(
+      "attach",
+      "controller-closed",
+      "dynamic tool controller is settled",
+    )
+
+  const connect: Controller["connect"] = (backend) =>
+    connectionCalls.withPermit(
+      Effect.suspend(() =>
+        settled ? Effect.fail(connectionClosed()) : connectBackend(backend),
+      ),
+    )
+
+  const connectFrom: Controller["connectFrom"] = (backend) =>
+    connectionCalls.withPermit(
+      Effect.suspend(() =>
+        settled
+          ? Effect.fail(connectionClosed())
+          : backend.pipe(
+              Effect.flatMap((backend) =>
+                connectBackend(backend).pipe(
+                  Effect.map((attachment) => ({ backend, attachment })),
+                ),
+              ),
+            ),
+      ),
+    )
+
+  const replace = (params: AttachParams, duringSettlement = false) =>
+    Effect.gen(function* () {
+      const previous = acknowledged
+      const intent: AttachmentIntent = {
+        params,
+        previous,
+        rejection: Deferred.makeUnsafe<never, LifecycleError>(),
+        attempted: false,
+      }
+      desired = intent
+      const rollback = Effect.sync(() => {
+        if (desired === intent) desired = previous
+      })
+      const apply = Effect.raceFirst(
+        request("attach", undefined, (backend) =>
+          attachmentLock.withPermit(
+            Effect.suspend(() => {
+              if (desired !== intent) return Effect.succeed({ attached: true as const })
+              intent.attempted = true
+              return backend.attachTools(params.tools).pipe(
+                Effect.tapError((error) => {
+                  if (!(error instanceof SimulationRequestError) && !(error instanceof SimulationCompatibilityError))
+                    return Effect.void
+                  return rejectIntent(intent, lifecycleError("attach", "rejected", error.message))
+                }),
+              )
+            }),
+          ),
+        ).pipe(
+          Effect.tapError((error) => (error.reason === "rejected" ? rejectIntent(intent, error) : Effect.void)),
+          Effect.tapError(() => (intent.attempted ? Effect.void : rollback)),
+          Effect.onInterrupt(() => (intent.attempted ? Effect.void : rollback)),
+        ),
+        Deferred.await(intent.rejection),
+      )
+      yield* duringSettlement
+        ? apply
+        : Effect.raceFirst(
+            apply,
+            Deferred.await(settlementStarted).pipe(
+              Effect.andThen(
+                Effect.fail(lifecycleError("attach", "controller-closed", "dynamic tool controller is settling")),
+              ),
+            ),
+          )
+      if (desired === intent) {
+        intent.previous = undefined
+        acknowledged = intent
+      }
+    })
 
   const attach: DynamicControls["attach"] = (params) =>
     Effect.gen(function* () {
@@ -542,38 +698,11 @@ export const make = Effect.fn("ToolProducer.make")(function* (
           ),
         )
       yield* attachmentCalls.withPermit(
-        Effect.gen(function* () {
-          const previous = desired
-          const intent: AttachmentIntent = { params: decoded, attempted: false }
-          desired = intent
-          const rollback = Effect.sync(() => {
-            if (desired === intent) desired = previous
-          })
-          yield* request("attach", undefined, (backend) =>
-            attachmentLock.withPermit(
-              Effect.suspend(() => {
-                if (desired !== intent)
-                  return Effect.succeed({ attached: true as const })
-                intent.attempted = true
-                return backend
-                  .attachTools(decoded.tools)
-                  .pipe(
-                    Effect.tapError((error) =>
-                      error instanceof SimulationRequestError ||
-                      error instanceof SimulationCompatibilityError
-                        ? rollback
-                        : Effect.void,
-                    ),
-                  )
-              }),
-            ),
-          ).pipe(
-            Effect.tapError(() => (intent.attempted ? Effect.void : rollback)),
-            Effect.onInterrupt(() =>
-              intent.attempted ? Effect.void : rollback,
-            ),
-          )
-        }),
+        Effect.suspend(() =>
+          settling
+            ? Effect.fail(lifecycleError("attach", "controller-closed", "dynamic tool controller is settling"))
+            : replace(decoded),
+        ),
       )
       return undefined
     })
@@ -592,13 +721,13 @@ export const make = Effect.fn("ToolProducer.make")(function* (
     return decoded.pipe(
       Effect.flatMap((callID) =>
         Effect.callback<Invocation, LifecycleError>((resume) => {
-          if (closed) {
+          if (closed || settled) {
             resume(
               Effect.fail(
                 lifecycleError(
                   "take",
                   "controller-closed",
-                  "dynamic tool controller is closed",
+                  settled ? "dynamic tool controller is settled" : "dynamic tool controller is closed",
                   callID,
                 ),
               ),
@@ -665,9 +794,12 @@ export const make = Effect.fn("ToolProducer.make")(function* (
 
   const endGeneration = lifecycle.withPermit(
     Effect.gen(function* () {
+      generationActive = false
+      Deferred.doneUnsafe(generationEnded, Effect.void)
       const attached = yield* Ref.get(current)
       if (attached !== undefined) {
         yield* Ref.set(current, undefined)
+        Deferred.doneUnsafe(attached.disconnected, Effect.void)
         yield* Scope.close(attached.scope, Exit.void)
       }
       for (const record of records.values()) {
@@ -680,32 +812,112 @@ export const make = Effect.fn("ToolProducer.make")(function* (
       }
       records.clear()
       completed.clear()
+      unclaimedCancellations.length = 0
       yield* notifyBackend
     }),
   )
 
-  const settle = Effect.gen(function* () {
-    if (desired !== undefined) {
-      if (desired.params.tools.length > 0) yield* attach({ tools: [] })
-      yield* request("take", undefined, (backend) => backend.flushToolEvents())
-    }
-    yield* lifecycle.withPermit(
-      Effect.suspend(() => {
-        const pending = Array.from(records.values()).filter(
-          (record) => record.state === "pending",
-        ).length
-        return pending === 0
-          ? Effect.void
-          : Effect.fail(
-              lifecycleError(
-                "take",
-                "rejected",
-                `${pending} dynamic tool invocation(s) remain unsettled`,
+  function commitSettlement(): Effect.Effect<void, LifecycleError> {
+    return Effect.gen(function* () {
+      const retryAfter = yield* connectionCalls.withPermit(
+        Effect.gen(function* () {
+          const attached = yield* Ref.get(current)
+          if (generationActive && attached === undefined)
+            return generationEnded
+          if (generationActive && attached !== undefined) {
+            const drained = yield* Effect.raceFirst(
+              attached.backend.flushToolEvents().pipe(
+                Effect.mapError((error) =>
+                  lifecycleError("take", "rejected", error.message),
+                ),
+                Effect.as(true),
               ),
+              Deferred.await(attached.disconnected).pipe(Effect.as(false)),
             )
-      }),
-    )
-  })
+            if (!drained) return generationEnded
+          }
+          if (terminalFailure !== undefined)
+            return yield* Effect.fail(terminalFailure)
+          yield* lifecycle.withPermit(
+            Effect.suspend(() => {
+              if (terminalFailure !== undefined)
+                return Effect.fail(terminalFailure)
+              const pending = Array.from(records.values()).filter(
+                (record) => record.state === "pending",
+              ).length
+              if (pending > 0)
+                return Effect.fail(
+                  lifecycleError(
+                    "take",
+                    "rejected",
+                    `${pending} dynamic tool invocation(s) remain unsettled`,
+                  ),
+                )
+              return Effect.sync(() => {
+                settled = true
+                for (const waiter of waiters)
+                  waiter.resume(
+                    Effect.fail(
+                      lifecycleError(
+                        "take",
+                        "controller-closed",
+                        "dynamic tool controller is settled",
+                        waiter.callID,
+                      ),
+                    ),
+                  )
+                waiters.length = 0
+              })
+            }),
+          )
+          return undefined
+        }),
+      )
+      if (retryAfter === undefined) return
+      yield* Effect.raceFirst(
+        Deferred.await(retryAfter),
+        Effect.raceFirst(
+          awaitBackend("take", undefined).pipe(Effect.asVoid),
+          Deferred.await(failure),
+        ),
+      )
+      yield* commitSettlement()
+    })
+  }
+
+  const settle = Effect.sync(() => {
+    settling = true
+    Deferred.doneUnsafe(settlementStarted, Effect.void)
+  }).pipe(
+    Effect.andThen(
+      attachmentCalls.withPermit(
+        Effect.gen(function* () {
+          yield* connectionCalls.withPermit(Effect.void)
+          if (terminalFailure !== undefined)
+            return yield* Effect.fail(terminalFailure)
+          if (generationActive && desired !== undefined) {
+            const ended = generationEnded
+            if (desired.params.tools.length > 0)
+              yield* Effect.raceFirst(
+                replace({ tools: [] }, true),
+                Deferred.await(ended),
+              )
+            if (generationActive)
+              yield* Effect.raceFirst(
+                request("take", undefined, (backend) =>
+                  backend.flushToolEvents(),
+                ),
+                Deferred.await(ended),
+              )
+          }
+          if (terminalFailure !== undefined)
+            return yield* Effect.fail(terminalFailure)
+          yield* commitSettlement()
+          return undefined
+        }),
+      ),
+    ),
+  )
 
   const shutdown = Effect.suspend(() => {
     if (closed) return Effect.void
@@ -734,6 +946,7 @@ export const make = Effect.fn("ToolProducer.make")(function* (
   return {
     controls: { attach, take },
     connect,
+    connectFrom,
     endGeneration,
     settle,
     shutdown,

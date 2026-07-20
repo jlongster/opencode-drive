@@ -90,9 +90,13 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
       Effect.mapError((cause) => error("server.launch", cause)),
       Effect.onError(() => Scope.close(scope, Exit.void)),
     )
-    const rollbackLaunch = Scope.close(scope, Exit.void).pipe(
-      Effect.andThen(toolProducer.endGeneration),
-      Effect.andThen(instance.killServer.pipe(Effect.ignore)),
+    let llmAttachment: LlmController.Attachment | undefined
+    const rollbackLaunch = Effect.suspend(() =>
+      (llmAttachment?.detach() ?? Effect.void).pipe(
+        Effect.andThen(toolProducer.endGeneration),
+        Effect.andThen(Scope.close(scope, Exit.void)),
+        Effect.andThen(instance.killServer.pipe(Effect.ignore)),
+      ),
     )
     const backend = yield* connector.backend(launched.endpoint, {
       compatibility: target.compatibility,
@@ -103,17 +107,15 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
     )
     const connectTools = Effect.fn("OpenCodeServer.connectTools")(function* () {
       const connectionScope = yield* Scope.fork(scope)
-      const backend = yield* connector.backend(launched.endpoint, {
-        attach: false,
-        compatibility: target.compatibility,
-      }).pipe(
-        Scope.provide(connectionScope),
-        Effect.onError(() => Scope.close(connectionScope, Exit.void)),
-      )
-      const attachment = yield* toolProducer.connect(backend).pipe(
-        Effect.onError(() => Scope.close(connectionScope, Exit.void)),
-      )
-      return { attachment, backend, scope: connectionScope }
+      const connection = yield* toolProducer
+        .connectFrom(
+          connector.backend(launched.endpoint, {
+            attach: false,
+            compatibility: target.compatibility,
+          }).pipe(Scope.provide(connectionScope)),
+        )
+        .pipe(Effect.onError(() => Scope.close(connectionScope, Exit.void)))
+      return { ...connection, scope: connectionScope }
     })
     const failToolConnection = (cause: unknown) =>
       toolProducer.shutdown.pipe(
@@ -132,6 +134,7 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
           isRetryableToolConnectionError,
           () => Effect.sleep(25).pipe(Effect.andThen(reconnectTools())),
         ),
+        Effect.catchIf(isClosedToolConnectionError, () => Effect.void),
         Effect.catch(failToolConnection),
         Effect.catchCauseIf(
           (cause) => !Cause.hasInterrupts(cause),
@@ -162,6 +165,7 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
     const attachment = yield* llm.attach(backend).pipe(
       Effect.onError(() => rollbackLaunch),
     )
+    llmAttachment = attachment
     const opencode = yield* OpenCodeSdk.make(instance.artifacts).pipe(
       Effect.onError(() => rollbackLaunch),
     )
@@ -177,10 +181,12 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
         Ref.get(generation).pipe(
           Effect.flatMap((active) =>
             active?.process === process
-              ? Deferred.fail(
-                  unexpectedExit,
-                  error("server.exit", `OpenCode server exited with status ${status}`),
-                ).pipe(Effect.asVoid)
+              ? toolProducer.endGeneration.pipe(
+                  Effect.andThen(
+                    Deferred.fail(unexpectedExit, error("server.exit", `OpenCode server exited with status ${status}`)),
+                  ),
+                  Effect.asVoid,
+                )
               : Effect.void,
           ),
         ),
@@ -199,8 +205,8 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
       )
     yield* Ref.set(generation, undefined)
     yield* active.attachment.detach()
-    yield* Scope.close(active.scope, Exit.void)
     yield* toolProducer.endGeneration
+    yield* Scope.close(active.scope, Exit.void)
     const stopped = yield* Effect.exit(
       instance.killServer.pipe(
         Effect.mapError((cause) => error("server.kill", cause)),
@@ -227,7 +233,7 @@ export const make = Effect.fn("OpenCodeServer.make")(function* (
         Deferred.await(toolConnectionFailure),
         Effect.raceFirst(llm.failure, Deferred.await(unexpectedExit)),
       ),
-    ),
+    ).pipe(Effect.tapError(() => toolProducer.endGeneration)),
     compatibility: Effect.sync(() => compatibility),
   } satisfies Server
 })
@@ -239,6 +245,10 @@ function isRetryableToolConnectionError(cause: unknown) {
       isTransientRpcClientError(cause)) ||
     (cause instanceof LifecycleError && cause.reason === "transport-interrupted")
   )
+}
+
+function isClosedToolConnectionError(cause: unknown) {
+  return cause instanceof LifecycleError && cause.reason === "controller-closed"
 }
 
 function isTransientRpcClientError(error: RpcClientError.RpcClientError) {

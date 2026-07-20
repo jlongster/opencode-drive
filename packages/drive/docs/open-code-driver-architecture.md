@@ -115,7 +115,12 @@ generation because producer IDs may be reused by a new process.
 Settlement first clears the dynamic registration set on OpenCode, then drains
 the ordered local event stream before checking for unresolved invocations. The
 clear acts as the server-side barrier that prevents a native invocation from
-appearing after a successful settlement snapshot.
+appearing after a successful settlement snapshot. Settlement is terminal for
+dynamic attachment. Reconnects remain available while the clear is in flight;
+the final connection gate drains any reconnect that landed during settlement
+before preventing further backend creation. If the server generation has
+already ended, its teardown has cleared the generation-scoped invocation
+records, so settlement does not wait for a replacement backend.
 
 ## TUI Lifecycle
 

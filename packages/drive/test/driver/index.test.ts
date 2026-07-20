@@ -544,6 +544,16 @@ it.live("interrupts use when the backend disconnects", () =>
         (driver) =>
           Effect.gen(function* () {
             artifacts = driver.artifacts
+            yield* driver.tools.attach({
+              tools: [
+                {
+                  name: "lookup",
+                  description: "Look up a value",
+                  inputSchema: { type: "object" },
+                  options: { codemode: false },
+                },
+              ],
+            })
             const pid = Number(
               yield* Effect.promise(() =>
                 readFile(`${artifacts}/service.pid`, "utf8"),
